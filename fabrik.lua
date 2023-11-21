@@ -83,6 +83,17 @@ function Joint:add_constraint(constraint)
     table.insert(self.constraints, constraint)
 end
 
+function Joint:add_mutual_constraint(constraint)
+    local mutual = {}
+    for k, v in pairs(constraint) do
+        mutual[k] = v
+    end
+    mutual.fixed = constraint.moving
+    mutual.moving = constraint.fixed
+    self:add_constraint(constraint)
+    self:add_constraint(mutual)
+end
+
 function Joint:update_pos()
     if self.influence_count == 0 then return end
     local centroid = mgl.vec2(0, 0)
@@ -98,7 +109,8 @@ end
 
 function Joint:influence_lengths(without, time)
     for joint, link in pairs(self.neighbors) do
-        if joint ~= without then
+        -- can use single joint or multiple joints
+        if without == nil or joint ~= without and without[joint] == nil then
             local to_joint = joint:get_influence(self) - self.pos
             local length_to_joint = mgl.length(to_joint)
             local target_length = math.min(math.max(link.length_min, length_to_joint), link.length_max)
@@ -123,7 +135,7 @@ end
 
 function Joint:influence_constraints(without, time)
     for i, constraint in ipairs(self.constraints) do
-        if constraint.moving ~= without then
+        if without == nil or constraint.moving ~= without and without[constraint.moving] == nil then
             local to_fixed = constraint.fixed:get_influence(self) - self.pos
             local to_moving = constraint.moving:get_influence(self) - self.pos
             local angle_to_fixed = math.atan2(to_fixed.y, to_fixed.x)
@@ -165,7 +177,7 @@ end
 function Joint:influence_recursive(without, time)
     self:influence_all(without, time)
     for joint, link in pairs(self.neighbors) do
-        if joint ~= without then
+        if without == nil or joint ~= without and without[joint] == nil then
             if joint.influence_count >= joint.neighbor_count - 1 then
                 joint:update_pos()
                 joint:influence_recursive(self, time)
@@ -174,10 +186,22 @@ function Joint:influence_recursive(without, time)
     end
 end
 
-function Joint:finish_recursive()
+function Joint:finish_recursive(without, time)
+    if self.influence_count < self.neighbor_count - 1 then
+        -- has not influenced others
+        self:influence_all(self.influences, time)
+        for joint, link in pairs(self.neighbors) do
+            if self.influences[joint] == nil then
+                joint:update_pos()
+                joint:influence_recursive(self, time)
+            end
+        end
+    end
     self:update_pos()
     for joint, link in pairs(self.neighbors) do
-        joint:finish_recursive()
+        if joint ~= without then
+            joint:finish_recursive(self, time)
+        end
     end
 end
 

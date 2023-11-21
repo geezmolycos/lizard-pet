@@ -14,27 +14,66 @@ local imgui = require "cimgui"
 local mgl = require "MGL"
 local fabrik = require "fabrik"
 
-local test_ik = fabrik.Joint.new(mgl.vec2(0, 0))
-local k = test_ik
-local iks = {test_ik}
-for i = 1, 20 do
-    local j = fabrik.Joint.new(mgl.vec2(i*10, 0))
-    table.insert(iks, j)
-    k:add_neighbor(j, fabrik.link(15, 15, 10, true))
+local mouse_joint = fabrik.Joint.new(mgl.vec2(10, 100))
+local k = mouse_joint
+local body_joints = {mouse_joint}
+local leg_joints = {}
+-- body
+for i = 1, 10 do
+    local j = fabrik.Joint.new(mgl.vec2(i*10+30, 100))
+    table.insert(body_joints, j)
+    if i == 1 then
+        k:add_neighbor(j, {
+            length_min = 30,
+            length_max = 60,
+            length_absolute_min = 1,
+            length_absolute_max = 1e5,
+            speed = 200,
+            exponential = false
+        })
+    else
+        k:add_neighbor(j, fabrik.link(15, 15, 500))
+    end
     k = j
 end
 
-for i = 2, 20 do
+for i = 3, 10 do
     local c = fabrik.constraint(
-        iks[i-1],
-        iks[i+1],
+        body_joints[i-1],
+        body_joints[i+1],
         math.pi*7/8,
         math.pi*9/8,
-        2*math.pi,
+        math.pi/2,
         false
     )
-    iks[i]:add_constraint(c)
+    body_joints[i]:add_constraint(c)
 end
+
+-- front legs
+-- left
+local left_elbow = fabrik.Joint.new(mgl.vec2(40+30, 110))
+local left_paw = fabrik.Joint.new(mgl.vec2(30+30, 110))
+local left_paw_target = left_paw.pos
+table.insert(leg_joints, left_elbow)
+table.insert(leg_joints, left_paw)
+
+local function get_leg_next_pos(front, left)
+    local front_joint, base_joint
+    if front then
+        front_joint = body_joints[2]
+        base_joint = body_joints[3]
+    else
+        front_joint = body_joints[4]
+        base_joint = body_joints[5]
+    end
+    local diff = front_joint.pos - base_joint.pos
+    local dir = mgl.normalize(diff)
+    local trans = mgl.vec2(mgl.rotate(left and 30 or -30) * mgl.vec3(dir, 1))
+    return base_joint.pos + trans * 20
+end
+
+body_joints[3]:add_neighbor(left_elbow, fabrik.link(15, 15, 500))
+left_elbow:add_neighbor(left_paw, fabrik.link(15, 15, 500))
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
@@ -48,9 +87,14 @@ love.draw = function()
     imgui.Render()
     imgui.love.RenderDrawLists()
 
-    for i, ik in ipairs(iks) do
+    for i, ik in ipairs(body_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
     end
+    for i, ik in ipairs(leg_joints) do
+        love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
+    end
+    local n = get_leg_next_pos(true, true)
+    love.graphics.circle('line', n.x, n.y, 3)
 end
 
 love.update = function(dt)
@@ -58,8 +102,14 @@ love.update = function(dt)
     imgui.NewFrame()
 
     local target = mgl.vec2(love.mouse.getPosition())
-    test_ik.pos = target
-    test_ik:influence_recursive(nil, dt)
+    mouse_joint.pos = target
+    left_paw.pos = left_paw_target
+    if mgl.length(get_leg_next_pos(true, true) - left_paw_target) > 20 then
+        left_paw_target = get_leg_next_pos(true, true)
+    end
+    mouse_joint:influence_recursive(nil, dt)
+    left_paw:influence_recursive(nil, dt)
+    mouse_joint:finish_recursive(nil, dt)
 end
 
 love.mousemoved = function(x, y, ...)
