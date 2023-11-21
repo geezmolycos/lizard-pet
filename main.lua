@@ -17,11 +17,22 @@ local fabrik = require "fabrik"
 local test_ik = fabrik.Joint.new(mgl.vec2(0, 0))
 local k = test_ik
 local iks = {test_ik}
-for i = 1, 10 do
+for i = 1, 40 do
     local j = fabrik.Joint.new(mgl.vec2(i*10, 0))
     table.insert(iks, j)
-    k:add_neighbor(j, fabrik.link(10))
+    k:add_neighbor(j, fabrik.link(10, 10, 200))
     k = j
+end
+
+for i = 2, 40 do
+    local c = fabrik.constraint(
+        iks[i-1],
+        iks[i+1],
+        math.pi*7/8,
+        math.pi*9/8,
+        math.pi/2
+    )
+    iks[i]:add_constraint(c)
 end
 
 love.load = function()
@@ -47,7 +58,7 @@ love.update = function(dt)
 
     local target = mgl.vec2(love.mouse.getPosition())
     test_ik.pos = target
-    test_ik:influence_recursive()
+    test_ik:influence_recursive(nil, dt)
 end
 
 love.mousemoved = function(x, y, ...)

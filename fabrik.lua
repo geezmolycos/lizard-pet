@@ -4,21 +4,28 @@ local fabrik = {}
 local inspect = require "inspect"
 local mgl = require "MGL"
 
+function fabrik.lerp(a, b, t)
+    return a + t * (b-a)
+end
+
 -- https://github.com/lincerely/gecko/tree/master
 -- https://sean.cm/a/fabrik-algorithm-2d
 
-function fabrik.link(length)
+function fabrik.link(length_min, length_max, speed)
     return {
-        length = length
+        length_min = length_min,
+        length_max = length_max or length_min,
+        speed = speed or 1.0
     }
 end
 
-function fabrik.constraint(fixed, moving, angle_min, angle_max)
+function fabrik.constraint(fixed, moving, angle_min, angle_max, speed)
     return {
         fixed = fixed,
         moving = moving,
         angle_min = angle_min,
-        angle_max = angle_max
+        angle_max = angle_max,
+        speed = speed or 1.0
     }
 end
 
@@ -85,16 +92,28 @@ function Joint:update_pos()
     self:clear_influence()
 end
 
-function Joint:influence_lengths(without)
+function Joint:influence_lengths(without, time)
     for joint, link in pairs(self.neighbors) do
         if joint ~= without then
-            local new_joint_pos = self.pos + mgl.normalize(joint.pos - self.pos) * link.length
+            local to_joint = joint:get_influence(self) - self.pos
+            local length_to_joint = mgl.length(to_joint)
+            local target_length = math.min(math.max(link.length_min, length_to_joint), link.length_max)
+            local length_difference = target_length - length_to_joint
+            local can_move_length = link.speed * time
+            local moved_length
+            if length_difference >= 0 then
+                moved_length = math.min(can_move_length, length_difference)
+            else
+                moved_length = math.max(-can_move_length, length_difference)
+            end
+            local new_length = length_to_joint + moved_length
+            local new_joint_pos = self.pos + new_length * mgl.normalize(to_joint)
             joint:add_influence(self, new_joint_pos)
         end
     end
 end
 
-function Joint:influence_constraints(without)
+function Joint:influence_constraints(without, time)
     for i, constraint in ipairs(self.constraints) do
         if constraint.moving ~= without then
             local to_fixed = constraint.fixed:get_influence(self) - self.pos
@@ -106,32 +125,39 @@ function Joint:influence_constraints(without)
             local angle_half = (angle_to_moving_max - angle_to_moving_min) % (2*math.pi) / 2
             local angle_mid = (angle_to_moving_max - angle_half) % (2*math.pi)
             local shifted_angle = (angle_to_moving - angle_mid) % (2*math.pi)
+            local angle_difference = 0
             -- choose the nearest valid angle
             if angle_half < shifted_angle and shifted_angle < math.pi then
-                shifted_angle = angle_half
+                angle_difference = angle_half - shifted_angle
             elseif math.pi <= shifted_angle and shifted_angle < 2*math.pi - angle_half then
-                shifted_angle = 2*math.pi - angle_half
+                angle_difference = 2*math.pi - angle_half - shifted_angle
             end
-            -- shift back
-            angle_to_moving = (shifted_angle + angle_mid) % (2*math.pi)
+            local can_move_angle = constraint.speed * time
+            local moved_angle
+            if angle_difference >= 0 then
+                moved_angle = math.min(can_move_angle, angle_difference)
+            else
+                moved_angle = math.max(-can_move_angle, angle_difference)
+            end
+            angle_to_moving = (angle_to_moving + moved_angle) % (2*math.pi)
             to_moving = mgl.length(to_moving) * mgl.vec2(math.cos(angle_to_moving), math.sin(angle_to_moving))
             constraint.moving:add_influence(self, self.pos + to_moving)
         end
     end
 end
 
-function Joint:influence_all(without)
-    self:influence_lengths(without)
-    self:influence_constraints(without)
+function Joint:influence_all(without, time)
+    self:influence_lengths(without, time)
+    self:influence_constraints(without, time)
 end
 
-function Joint:influence_recursive(without)
-    self:influence_all(without)
+function Joint:influence_recursive(without, time)
+    self:influence_all(without, time)
     for joint, link in pairs(self.neighbors) do
         if joint ~= without then
             if joint.influence_count >= joint.neighbor_count - 1 then
                 joint:update_pos()
-                joint:influence_recursive(self)
+                joint:influence_recursive(self, time)
             end
         end
     end
