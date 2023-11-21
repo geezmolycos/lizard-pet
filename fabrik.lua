@@ -11,21 +11,25 @@ end
 -- https://github.com/lincerely/gecko/tree/master
 -- https://sean.cm/a/fabrik-algorithm-2d
 
-function fabrik.link(length_min, length_max, speed)
+function fabrik.link(length_min, length_max, speed, exponential)
     return {
         length_min = length_min,
         length_max = length_max or length_min,
-        speed = speed or 1.0
+        length_absolute_min = length_min / 2,
+        length_absolute_max = length_max * 2,
+        speed = speed or 1.0,
+        exponential = exponential or false
     }
 end
 
-function fabrik.constraint(fixed, moving, angle_min, angle_max, speed)
+function fabrik.constraint(fixed, moving, angle_min, angle_max, speed, exponential)
     return {
         fixed = fixed,
         moving = moving,
         angle_min = angle_min,
         angle_max = angle_max,
-        speed = speed or 1.0
+        speed = speed or 1.0,
+        exponential = exponential or false
     }
 end
 
@@ -100,6 +104,9 @@ function Joint:influence_lengths(without, time)
             local target_length = math.min(math.max(link.length_min, length_to_joint), link.length_max)
             local length_difference = target_length - length_to_joint
             local can_move_length = link.speed * time
+            if link.exponential then
+                can_move_length = can_move_length * math.abs(length_difference)
+            end
             local moved_length
             if length_difference >= 0 then
                 moved_length = math.min(can_move_length, length_difference)
@@ -107,6 +114,7 @@ function Joint:influence_lengths(without, time)
                 moved_length = math.max(-can_move_length, length_difference)
             end
             local new_length = length_to_joint + moved_length
+            new_length = math.min(math.max(link.length_absolute_min, new_length), link.length_absolute_max)
             local new_joint_pos = self.pos + new_length * mgl.normalize(to_joint)
             joint:add_influence(self, new_joint_pos)
         end
@@ -133,6 +141,9 @@ function Joint:influence_constraints(without, time)
                 angle_difference = 2*math.pi - angle_half - shifted_angle
             end
             local can_move_angle = constraint.speed * time
+            if constraint.exponential then
+                can_move_angle = can_move_angle * math.abs(angle_difference)
+            end
             local moved_angle
             if angle_difference >= 0 then
                 moved_angle = math.min(can_move_angle, angle_difference)
