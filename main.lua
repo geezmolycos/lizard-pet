@@ -29,10 +29,11 @@ for i = 1, 10 do
             length_absolute_min = 1,
             length_absolute_max = 1e5,
             speed = 200,
-            exponential = false
+            exponential = false,
+            drag = 0
         })
     else
-        k:add_neighbor(j, fabrik.link(15, 15, 500))
+        k:add_neighbor(j, fabrik.link(15, 15, 500, false, 0.9))
     end
     k = j
 end
@@ -89,9 +90,11 @@ love.draw = function()
 
     for i, ik in ipairs(body_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
+        -- love.graphics.print(ik.drag_translate, ik.pos.x, ik.pos.y)
     end
     for i, ik in ipairs(leg_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
+        -- love.graphics.print(ik.drag_translate, ik.pos.x, ik.pos.y)
     end
     local n = get_leg_next_pos(true, true)
     love.graphics.circle('line', n.x, n.y, 3)
@@ -107,9 +110,9 @@ love.update = function(dt)
     if mgl.length(get_leg_next_pos(true, true) - left_paw_target) > 20 then
         left_paw_target = get_leg_next_pos(true, true)
     end
-    mouse_joint:influence_recursive(nil, dt)
     left_paw:influence_recursive(nil, dt)
-    mouse_joint:finish_recursive(nil, dt)
+    mouse_joint:influence_recursive(nil, dt)
+    -- mouse_joint:finish_recursive(nil, dt)
 end
 
 love.mousemoved = function(x, y, ...)
