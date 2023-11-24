@@ -33,7 +33,7 @@ for i = 1, 10 do
             drag = 0
         })
     else
-        k:add_neighbor(j, fabrik.link(15, 15, 500, false, 0.9))
+        k:add_neighbor(j, fabrik.link(15, 15, 500, false, 0))
     end
     k = j
 end
@@ -45,7 +45,8 @@ for i = 3, 10 do
         math.pi*7/8,
         math.pi*9/8,
         math.pi/2,
-        false
+        false,
+        1.0
     )
     body_joints[i]:add_constraint(c)
 end
@@ -90,11 +91,11 @@ love.draw = function()
 
     for i, ik in ipairs(body_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        -- love.graphics.print(ik.drag_translate, ik.pos.x, ik.pos.y)
+        love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
     for i, ik in ipairs(leg_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        -- love.graphics.print(ik.drag_translate, ik.pos.x, ik.pos.y)
+        love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
     local n = get_leg_next_pos(true, true)
     love.graphics.circle('line', n.x, n.y, 3)

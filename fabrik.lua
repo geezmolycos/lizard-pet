@@ -152,7 +152,8 @@ function Joint:influence_lengths(without, time)
             local self_influence = joint:get_influence(self)
             local joint_pos = self_influence.pos
             local drag_translation = self.drag_translate * link.drag
-            joint_pos = joint_pos + drag_translation
+            local drag_rotation = self.drag_rotate
+            joint_pos = mgl.vec2(mgl.rotate(drag_rotation) * mgl.vec3(joint_pos + drag_translation - self.pos, 1)) + self.pos
 
             local to_joint = joint_pos - self.pos
             local dir_to_joint = mgl.normalize(to_joint)
@@ -176,7 +177,7 @@ function Joint:influence_lengths(without, time)
             joint:add_influence(self, {
                 pos = new_joint_pos,
                 drag_translate = self_influence.drag_translate + translate + drag_translation,
-                drag_rotate = self_influence.drag_rotate + drag_rotation
+                drag_rotate = self_influence.drag_rotate
             })
         end
     end
@@ -214,11 +215,11 @@ function Joint:influence_constraints(without, time)
                 moved_angle = math.max(-can_move_angle, angle_difference)
             end
             angle_to_moving = (angle_to_moving + moved_angle) % (2*math.pi)
-            to_moving = mgl.length(to_moving) * mgl.vec2(math.cos(angle_to_moving), math.sin(angle_to_moving))
+            local to_target = mgl.length(to_moving) * mgl.vec2(math.cos(angle_to_moving), math.sin(angle_to_moving))
             constraint.moving:add_influence(self, {
-                pos = self.pos + to_moving,
-                drag_translate = moving_influence.drag_translate,
-                drag_rotate = moving_influence.drag_rotate + moved_angle
+                pos = self.pos + to_target,
+                drag_translate = moving_influence.drag_translate + to_target - to_moving, -- small arc is like line
+                drag_rotate = moving_influence.drag_rotate + moved_angle * constraint.drag
             })
         end
     end
