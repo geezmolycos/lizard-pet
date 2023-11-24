@@ -12,18 +12,18 @@ package.cpath = string.format("%s;%s/?.%s", package.cpath, lib_path, extension)
 local inspect = require "inspect"
 local imgui = require "cimgui"
 local mgl = require "MGL"
-local fabrik = require "fabrik"
+local skeleton = require "skeleton"
 
-local mouse_joint = fabrik.Joint.new(mgl.vec2(10, 100))
+local mouse_joint = skeleton.Joint.new(mgl.vec2(10, 100))
 local k = mouse_joint
 local body_joints = {mouse_joint}
 local leg_joints = {}
 -- body
 for i = 1, 10 do
-    local j = fabrik.Joint.new(mgl.vec2(i*10+30, 100))
+    local j = skeleton.Joint.new(mgl.vec2(i*10+30, 100))
     table.insert(body_joints, j)
     if i == 1 then
-        k:add_neighbor(j, {
+        k:add_mutual_neighbor(j, {
             length_min = 30,
             length_max = 60,
             length_absolute_min = 1,
@@ -33,13 +33,13 @@ for i = 1, 10 do
             drag = 0
         })
     else
-        k:add_neighbor(j, fabrik.link(15, 15, 500, false, 0))
+        k:add_mutual_neighbor(j, skeleton.link(15, 15, 500, false, 0))
     end
     k = j
 end
 
 for i = 3, 10 do
-    local c = fabrik.constraint(
+    local c = skeleton.constraint(
         body_joints[i-1],
         body_joints[i+1],
         math.pi*7/8,
@@ -53,8 +53,8 @@ end
 
 -- front legs
 -- left
-local left_elbow = fabrik.Joint.new(mgl.vec2(40+30, 110))
-local left_paw = fabrik.Joint.new(mgl.vec2(30+30, 110))
+local left_elbow = skeleton.Joint.new(mgl.vec2(40+30, 110))
+local left_paw = skeleton.Joint.new(mgl.vec2(30+30, 110))
 local left_paw_target = left_paw.pos
 table.insert(leg_joints, left_elbow)
 table.insert(leg_joints, left_paw)
@@ -74,8 +74,8 @@ local function get_leg_next_pos(front, left)
     return base_joint.pos + trans * 20
 end
 
-body_joints[3]:add_neighbor(left_elbow, fabrik.link(15, 15, 500))
-left_elbow:add_neighbor(left_paw, fabrik.link(15, 15, 500))
+body_joints[3]:add_mutual_neighbor(left_elbow, skeleton.link(15, 15, 500))
+left_elbow:add_mutual_neighbor(left_paw, skeleton.link(15, 15, 500))
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
@@ -91,11 +91,11 @@ love.draw = function()
 
     for i, ik in ipairs(body_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
+        -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
     for i, ik in ipairs(leg_joints) do
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
+        -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
     local n = get_leg_next_pos(true, true)
     love.graphics.circle('line', n.x, n.y, 3)

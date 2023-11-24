@@ -1,17 +1,17 @@
 
-local fabrik = {}
+local skeleton = {}
 
 local inspect = require "inspect"
 local mgl = require "MGL"
 
-function fabrik.lerp(a, b, t)
+function skeleton.lerp(a, b, t)
     return a + t * (b-a)
 end
 
 -- https://github.com/lincerely/gecko/tree/master
 -- https://sean.cm/a/fabrik-algorithm-2d
 
-function fabrik.link(length_min, length_max, speed, exponential, drag)
+function skeleton.link(length_min, length_max, speed, exponential, drag)
     return {
         length_min = length_min,
         length_max = length_max or length_min,
@@ -23,7 +23,7 @@ function fabrik.link(length_min, length_max, speed, exponential, drag)
     }
 end
 
-function fabrik.constraint(fixed, moving, angle_min, angle_max, speed, exponential, drag)
+function skeleton.constraint(fixed, moving, angle_min, angle_max, speed, exponential, drag)
     return {
         fixed = fixed,
         moving = moving,
@@ -37,7 +37,7 @@ end
 
 local Joint = {}
 Joint.__index = Joint
-fabrik.Joint = Joint
+skeleton.Joint = Joint
 
 function Joint.new(pos)
     local self = setmetatable({}, Joint)
@@ -56,11 +56,30 @@ function Joint:add_neighbor(joint, link)
     if self.neighbors[joint] == nil then
         -- update count
         self.neighbor_count = self.neighbor_count + 1
-        joint.neighbor_count = joint.neighbor_count + 1
     end
     self.neighbors[joint] = link
-    joint.neighbors[self] = link
 end
+
+function Joint:add_mutual_neighbor(joint, link)
+    self:add_neighbor(joint, link)
+    joint:add_neighbor(self, link)
+end
+
+function Joint:add_constraint(constraint)
+    table.insert(self.constraints, constraint)
+end
+
+function Joint:add_mutual_constraint(constraint)
+    local mutual = {}
+    for k, v in pairs(constraint) do
+        mutual[k] = v
+    end
+    mutual.fixed = constraint.moving
+    mutual.moving = constraint.fixed
+    self:add_constraint(constraint)
+    self:add_constraint(mutual)
+end
+
 
 function Joint:add_influence(joint, t)
     if self.influences[joint] == nil then
@@ -85,21 +104,6 @@ function Joint:get_influence(joint)
             drag_rotate = 0
         }
     end
-end
-
-function Joint:add_constraint(constraint)
-    table.insert(self.constraints, constraint)
-end
-
-function Joint:add_mutual_constraint(constraint)
-    local mutual = {}
-    for k, v in pairs(constraint) do
-        mutual[k] = v
-    end
-    mutual.fixed = constraint.moving
-    mutual.moving = constraint.fixed
-    self:add_constraint(constraint)
-    self:add_constraint(mutual)
 end
 
 function Joint:update_pos()
@@ -262,4 +266,4 @@ function Joint:finish_recursive(without, time)
     end
 end
 
-return fabrik
+return skeleton
