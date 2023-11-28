@@ -1,7 +1,6 @@
 
 local skeleton = {}
 
-local inspect = require "inspect"
 local mgl = require "MGL"
 
 function skeleton.lerp(a, b, t)
@@ -36,20 +35,19 @@ function skeleton.constraint(fixed, moving, angle_min, angle_max, speed, exponen
 end
 
 local Joint = {}
-Joint.__index = Joint
 skeleton.Joint = Joint
 
-function Joint.new(pos)
-    local self = setmetatable({}, Joint)
-    self.neighbors = {}
-    self.neighbor_count = 0
-    self.influences = {}
-    self.influence_count = 0
-    self.constraints = {}
-    self.pos = pos or mgl.vec2(0, 0)
-    self.drag_translate = mgl.vec2(0, 0)
-    self.drag_rotate = 0
-    return self
+function Joint:new(pos)
+    local inst = setmetatable({}, {__index = self})
+    inst.neighbors = {}
+    inst.neighbor_count = 0
+    inst.influences = {}
+    inst.influence_count = 0
+    inst.constraints = {}
+    inst.pos = pos or mgl.vec2(0, 0)
+    inst.drag_translate = mgl.vec2(0, 0)
+    inst.drag_rotate = 0
+    return inst
 end
 
 function Joint:add_neighbor(joint, link)
@@ -264,6 +262,52 @@ function Joint:finish_recursive(without, time)
             joint:finish_recursive(self, time)
         end
     end
+end
+
+function Joint:foreach(fn, without)
+    fn(self)
+    for joint, link in pairs(self.neighbors) do
+        if joint ~= without then
+            joint:foreach(fn, self)
+        end
+    end
+end
+
+local function shallow_copy(t)
+    local t_new = {}
+    for i, v in pairs(t) do
+        t_new[i] = v
+    end
+    return t_new
+end
+
+function Joint:copy(without, without_new)
+    local self_new = getmetatable(self).__index:new()
+    -- copy neighbors and influences
+    local copied = {[without] = without_new}
+    for _, name in ipairs({'neighbors', 'influences'}) do
+        for joint, link in pairs(self[name]) do
+            if joint == without then
+                self_new[name][without_new] = shallow_copy(link)
+            else
+                local joint_new = joint:copy(self, self_new)
+                copied[joint] = joint_new
+                self_new[name][joint_new] = shallow_copy(link)
+            end
+        end
+    end
+    self_new.neighbor_count = self.neighbor_count
+    self_new.influence_count = self.influence_count
+    -- copy constraints
+    for _, constraint in ipairs(self.constraints) do
+        local constraint_new = shallow_copy(constraint)
+        constraint_new.fixed = copied[constraint.fixed]
+        constraint_new.moving = copied[constraint.moving]
+        table.insert(self_new.constraints, constraint_new)
+    end
+    self_new.pos = self.pos
+    self_new.drag_translate = self.drag_translate
+    self_new.drag_rotate = self.drag_rotate
 end
 
 return skeleton
