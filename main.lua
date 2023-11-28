@@ -14,13 +14,13 @@ local imgui = require "cimgui"
 local mgl = require "MGL"
 local skeleton = require "skeleton"
 
-local mouse_joint = skeleton.Joint.new(mgl.vec2(10, 100))
+local mouse_joint = skeleton.Joint:new(mgl.vec2(10, 100))
 local k = mouse_joint
 local body_joints = {mouse_joint}
 local leg_joints = {}
 -- body
 for i = 1, 10 do
-    local j = skeleton.Joint.new(mgl.vec2(i*10+30, 100))
+    local j = skeleton.Joint:new(mgl.vec2(i*10+30, 100))
     table.insert(body_joints, j)
     if i == 1 then
         k:add_mutual_neighbor(j, {
@@ -51,31 +51,14 @@ for i = 3, 10 do
     body_joints[i]:add_constraint(c)
 end
 
--- front legs
--- left
-local left_elbow = skeleton.Joint.new(mgl.vec2(40+30, 110))
-local left_paw = skeleton.Joint.new(mgl.vec2(30+30, 110))
-local left_paw_target = left_paw.pos
-table.insert(leg_joints, left_elbow)
-table.insert(leg_joints, left_paw)
+local demo_lizard = require "demo_lizard"
 
-local function get_leg_next_pos(front, left)
-    local front_joint, base_joint
-    if front then
-        front_joint = body_joints[2]
-        base_joint = body_joints[3]
-    else
-        front_joint = body_joints[4]
-        base_joint = body_joints[5]
-    end
-    local diff = front_joint.pos - base_joint.pos
-    local dir = mgl.normalize(diff)
-    local trans = mgl.vec2(mgl.rotate(left and 30 or -30) * mgl.vec3(dir, 1))
-    return base_joint.pos + trans * 20
-end
-
-body_joints[3]:add_mutual_neighbor(left_elbow, skeleton.link(15, 15, 500))
-left_elbow:add_mutual_neighbor(left_paw, skeleton.link(15, 15, 500))
+local left_front = demo_lizard.LizardLeg:new()
+left_front:build(body_joints[4], body_joints[3], mgl.vec2(15, -30))
+table.insert(leg_joints, left_front.fixation)
+table.insert(leg_joints, left_front.elbow)
+table.insert(leg_joints, left_front.paw)
+table.insert(leg_joints, left_front.current_target)
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
@@ -97,8 +80,6 @@ love.draw = function()
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
         -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
-    local n = get_leg_next_pos(true, true)
-    love.graphics.circle('line', n.x, n.y, 3)
 end
 
 love.update = function(dt)
@@ -107,13 +88,9 @@ love.update = function(dt)
 
     local target = mgl.vec2(love.mouse.getPosition())
     mouse_joint.pos = target
-    left_paw.pos = left_paw_target
-    if mgl.length(get_leg_next_pos(true, true) - left_paw_target) > 20 then
-        left_paw_target = get_leg_next_pos(true, true)
-    end
-    left_paw:influence_recursive(nil, dt)
     mouse_joint:influence_recursive(nil, dt)
-    -- mouse_joint:finish_recursive(nil, dt)
+    
+    left_front:update({time = dt})
 end
 
 love.mousemoved = function(x, y, ...)

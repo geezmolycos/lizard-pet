@@ -159,6 +159,9 @@ function Joint:influence_lengths(without, time)
 
             local to_joint = joint_pos - self.pos
             local dir_to_joint = mgl.normalize(to_joint)
+            if dir_to_joint.x ~= dir_to_joint.x or dir_to_joint.y ~= dir_to_joint.y then
+                dir_to_joint = mgl.vec2(1, 0) -- prevent singularity point
+            end
             local length_to_joint = mgl.length(to_joint)
             local target_length = math.min(math.max(link.length_min, length_to_joint), link.length_max)
             local length_difference = target_length - length_to_joint
