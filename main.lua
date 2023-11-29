@@ -17,7 +17,6 @@ local skeleton = require "skeleton"
 local mouse_joint = skeleton.Joint:new(mgl.vec2(10, 100))
 local k = mouse_joint
 local body_joints = {mouse_joint}
-local leg_joints = {}
 -- body
 for i = 1, 10 do
     local j = skeleton.Joint:new(mgl.vec2(i*10+30, 100))
@@ -53,12 +52,22 @@ end
 
 local demo_lizard = require "demo_lizard"
 
-local left_front = demo_lizard.LizardLeg:new()
-left_front:build(body_joints[4], body_joints[3], mgl.vec2(15, -30))
-table.insert(leg_joints, left_front.fixation)
-table.insert(leg_joints, left_front.elbow)
-table.insert(leg_joints, left_front.paw)
-table.insert(leg_joints, left_front.current_target)
+local legs = {}
+
+for _, is_back in ipairs({false, true}) do
+    for _, is_right in ipairs({false, true}) do
+        local leg = demo_lizard.LizardLeg:new()
+        local t
+        if is_right then t = -1 else t = 1 end
+        if is_back then
+            leg:build(body_joints[4], body_joints[2], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+        else
+            leg:build(body_joints[8], body_joints[6], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+        end
+        table.insert(legs, leg)
+    end
+end
+
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
@@ -76,9 +85,8 @@ love.draw = function()
         love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
         -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
     end
-    for i, ik in ipairs(leg_joints) do
-        love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
+    for _, l in ipairs(legs) do
+        l:draw()
     end
 end
 
@@ -90,7 +98,9 @@ love.update = function(dt)
     mouse_joint.pos = target
     mouse_joint:influence_recursive(nil, dt)
     
-    left_front:update({time = dt})
+    for _, l in ipairs(legs) do
+        l:update({time = dt})
+    end
 end
 
 love.mousemoved = function(x, y, ...)

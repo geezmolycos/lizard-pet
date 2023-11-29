@@ -29,7 +29,7 @@ function Circle:draw()
 end
 
 local Square = setmetatable({}, {__index = SingleJoint})
-skin = Square
+skin.Square = Square
 
 function Square:set(mode, radius)
     self.mode = mode
@@ -43,20 +43,17 @@ function Square:draw()
     )
 end
 
-local LinkedDoubleJoint = {}
-skin.LinkedDoubleJoint = LinkedDoubleJoint
+local DoubleJoint = {}
+skin.DoubleJoint = DoubleJoint
 
-function LinkedDoubleJoint:new(base_joint, head_joint)
+function DoubleJoint:new(base_joint, head_joint)
     local inst = setmetatable({}, {__index = self})
     inst.base_joint = base_joint
     inst.head_joint = head_joint
-    if base_joint.neighbors[head_joint] == nil then
-        error('joints are not linked')
-    end
     return inst
 end
 
-local Line = setmetatable({}, {__index = LinkedDoubleJoint})
+local Line = setmetatable({}, {__index = DoubleJoint})
 
 function Line:set()
 end

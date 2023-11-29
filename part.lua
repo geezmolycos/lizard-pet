@@ -55,4 +55,10 @@ function Part:update_children(args)
     end
 end
 
+function Part:draw_children(args)
+    for id, child in pairs(self.children.t) do
+        child.draw(args)
+    end
+end
+
 return part
