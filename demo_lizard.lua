@@ -29,6 +29,9 @@ function LizardLeg:build(root_joint, front_joint, target, elbow_pos)
     end
 end
 
+function LizardLeg:destroy()
+end
+
 function LizardLeg:get_rel_to_global()
     local root_to_front = self.front_joint.pos - self.root_joint.pos
     local root_to_front_dir = mgl.normalize(root_to_front)
@@ -58,6 +61,7 @@ function LizardLeg:init_skeleton()
     self.fixation.pos = self.root_joint.pos
     self.elbow.pos = elbow_pos
     self.paw.pos = paw_pos
+    self.current_target.pos = paw_pos
 end
 
 function LizardLeg:update(args)
@@ -72,10 +76,68 @@ function LizardLeg:update(args)
     self.fixation.pos = self.root_joint.pos
     self.fixation:influence_recursive(nil, args.time/2)
     self.current_target.pos = current_target
-    self:update_children(args)
 end
 
 function LizardLeg:draw(args)
+    for _, patch in ipairs(self.patches) do
+        patch:draw()
+    end
+end
+
+local LizardBody = setmetatable({}, {__index = part.Part})
+demo_lizard.LizardBody = LizardBody
+
+function LizardBody:build(target_joint, length, head_pos, delta_pos)
+    self.target_joint = target_joint
+    self.head = skeleton.Joint:new(head_pos)
+    self.target_joint:add_neighbor(self.head, {
+        length_min = 30,
+        length_max = 60,
+        length_absolute_min = 1,
+        length_absolute_max = 1e5,
+        speed = 200,
+        exponential = false,
+        drag = 0
+    })
+    self.joints = {self.head}
+    local joint_pos = head_pos
+    local delta_length = mgl.length(delta_pos)
+    for i = 2, length do
+        joint_pos = joint_pos + delta_pos
+        local joint = skeleton.Joint:new(joint_pos)
+        self.joints[#self.joints]:add_mutual_neighbor(joint, skeleton.link(delta_length, delta_length, 500))
+        table.insert(self.joints, joint)
+    end
+    for i = 3, length-1 do
+        local c = skeleton.constraint(
+            self.joints[i-1],
+            self.joints[i+1],
+            math.pi*7/8,
+            math.pi*9/8,
+            math.pi/2
+        )
+        self.joints[i]:add_constraint(c)
+    end
+    self.patches = {}
+    for i, joint in ipairs(self.joints) do
+        local patch = skin.Circle:new(joint)
+        patch:set('line', 5)
+        table.insert(self.patches, patch)
+    end
+end
+
+function LizardBody:destroy()
+    if self.joints and #self.joints > 0 then
+        self.target_joint:remove_neighbor(self.joints[1])
+    end
+end
+
+function LizardBody:update(args)
+    self.target_joint.pos = args.mouse_pos
+    self.target_joint:influence_recursive(nil, args.time)
+end
+
+function LizardBody:draw(args)
     for _, patch in ipairs(self.patches) do
         patch:draw()
     end

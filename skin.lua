@@ -65,4 +65,33 @@ function Line:draw()
     )
 end
 
+local CircleSeries = setmetatable({}, {__index = DoubleJoint})
+skin.CircleSeries = CircleSeries
+
+function CircleSeries:set(mode, radii)
+    self.mode = mode
+    self.radii = radii
+end
+
+function CircleSeries:set_from_to(mode, n, radius_from, radius_to)
+    self.mode = mode
+    local radii = {}
+    for i = 0, n+1 do
+        table.insert(radii, radius_from + (radius_to - radius_from) * i / (n+1))
+    end
+end
+
+function CircleSeries:draw()
+    local from = self.base_joint.pos
+    local to = self.head_joint.pos
+    local n = #self.radii - 1
+    for i, radius in ipairs(self.radii) do
+        local pos = from + (to - from) * (i-1) / n
+        love.graphics.circle(self.mode,
+            self.joint.pos.x, self.joint.pos.y,
+            radius
+        )
+    end
+end
+
 return skin

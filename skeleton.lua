@@ -58,26 +58,30 @@ function Joint:add_neighbor(joint, link)
     self.neighbors[joint] = link
 end
 
+function Joint:remove_neighbor(joint)
+    if self.neighbors[joint] ~= nil then
+        self.neighbor_count = self.neighbor_count - 1
+    end
+    self.neighbors[joint] = nil
+end
+
 function Joint:add_mutual_neighbor(joint, link)
     self:add_neighbor(joint, link)
     joint:add_neighbor(self, link)
 end
 
+function Joint:remove_mutual_neighbor(joint)
+    self:remove_neighbor(joint)
+    joint:remove_neighbor(self)
+end
+
 function Joint:add_constraint(constraint)
-    table.insert(self.constraints, constraint)
+    self.constraints[constraint] = true
 end
 
-function Joint:add_mutual_constraint(constraint)
-    local mutual = {}
-    for k, v in pairs(constraint) do
-        mutual[k] = v
-    end
-    mutual.fixed = constraint.moving
-    mutual.moving = constraint.fixed
-    self:add_constraint(constraint)
-    self:add_constraint(mutual)
+function Joint:remove_constraint(constraint)
+    self.constraints[constraint] = nil
 end
-
 
 function Joint:add_influence(joint, t)
     if self.influences[joint] == nil then
@@ -189,7 +193,7 @@ function Joint:influence_lengths(without, time)
 end
 
 function Joint:influence_constraints(without, time)
-    for i, constraint in ipairs(self.constraints) do
+    for constraint, _ in pairs(self.constraints) do
         if without == nil or constraint.moving ~= without and without[constraint.moving] == nil then
             local fixed_influence = constraint.fixed:get_influence(self)
             local moving_influence = constraint.moving:get_influence(self)
@@ -302,11 +306,11 @@ function Joint:copy(without, without_new)
     self_new.neighbor_count = self.neighbor_count
     self_new.influence_count = self.influence_count
     -- copy constraints
-    for _, constraint in ipairs(self.constraints) do
+    for constraint, _ in pairs(self.constraints) do
         local constraint_new = shallow_copy(constraint)
         constraint_new.fixed = copied[constraint.fixed]
         constraint_new.moving = copied[constraint.moving]
-        table.insert(self_new.constraints, constraint_new)
+        self_new.constraints[constraint_new] = true
     end
     self_new.pos = self.pos
     self_new.drag_translate = self.drag_translate

@@ -15,43 +15,11 @@ local mgl = require "MGL"
 local skeleton = require "skeleton"
 
 local mouse_joint = skeleton.Joint:new(mgl.vec2(10, 100))
-local k = mouse_joint
-local body_joints = {mouse_joint}
--- body
-for i = 1, 10 do
-    local j = skeleton.Joint:new(mgl.vec2(i*10+30, 100))
-    table.insert(body_joints, j)
-    if i == 1 then
-        k:add_mutual_neighbor(j, {
-            length_min = 30,
-            length_max = 60,
-            length_absolute_min = 1,
-            length_absolute_max = 1e5,
-            speed = 200,
-            exponential = false,
-            drag = 0
-        })
-    else
-        k:add_mutual_neighbor(j, skeleton.link(15, 15, 500, false, 0))
-    end
-    k = j
-end
-
-for i = 3, 10 do
-    local c = skeleton.constraint(
-        body_joints[i-1],
-        body_joints[i+1],
-        math.pi*7/8,
-        math.pi*9/8,
-        math.pi/2,
-        false,
-        1.0
-    )
-    body_joints[i]:add_constraint(c)
-end
 
 local demo_lizard = require "demo_lizard"
 
+local body = demo_lizard.LizardBody:new()
+body:build(mouse_joint, 10, mgl.vec2(10, 100), mgl.vec2(15, 0))
 local legs = {}
 
 for _, is_back in ipairs({false, true}) do
@@ -60,9 +28,9 @@ for _, is_back in ipairs({false, true}) do
         local t
         if is_right then t = -1 else t = 1 end
         if is_back then
-            leg:build(body_joints[4], body_joints[2], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+            leg:build(body.joints[4], body.joints[2], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
         else
-            leg:build(body_joints[8], body_joints[6], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+            leg:build(body.joints[8], body.joints[6], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
         end
         table.insert(legs, leg)
     end
@@ -81,10 +49,7 @@ love.draw = function()
     imgui.Render()
     imgui.love.RenderDrawLists()
 
-    for i, ik in ipairs(body_joints) do
-        love.graphics.circle('line', ik.pos.x, ik.pos.y, 5)
-        -- love.graphics.print(ik.drag_rotate, ik.pos.x, ik.pos.y)
-    end
+    body:draw()
     for _, l in ipairs(legs) do
         l:draw()
     end
@@ -95,9 +60,10 @@ love.update = function(dt)
     imgui.NewFrame()
 
     local target = mgl.vec2(love.mouse.getPosition())
-    mouse_joint.pos = target
-    mouse_joint:influence_recursive(nil, dt)
-    
+    body:update({
+        time = dt,
+        mouse_pos = target
+    })
     for _, l in ipairs(legs) do
         l:update({time = dt})
     end
