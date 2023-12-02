@@ -79,6 +79,7 @@ function CircleSeries:set_from_to(mode, n, radius_from, radius_to)
     for i = 0, n+1 do
         table.insert(radii, radius_from + (radius_to - radius_from) * i / (n+1))
     end
+    self.radii = radii
 end
 
 function CircleSeries:draw()
@@ -88,7 +89,7 @@ function CircleSeries:draw()
     for i, radius in ipairs(self.radii) do
         local pos = from + (to - from) * (i-1) / n
         love.graphics.circle(self.mode,
-            self.joint.pos.x, self.joint.pos.y,
+            pos.x, pos.y,
             radius
         )
     end

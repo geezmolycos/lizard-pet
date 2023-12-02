@@ -22,9 +22,11 @@ function LizardLeg:build(root_joint, front_joint, target, elbow_pos)
     self.current_target = skeleton.Joint:new()
     self:init_skeleton()
     self.patches = {}
-    for _, name in ipairs({'fixation', 'elbow', 'paw', 'current_target'}) do
-        local patch = skin.Circle:new(self[name])
-        patch:set('line', 3)
+    local names = {'fixation', 'elbow', 'paw', 'current_target'}
+    local size = {5,2,2,3}
+    for i = 1, #names-1 do
+        local patch = skin.CircleSeries:new(self[names[i]], self[names[i+1]])
+        patch:set_from_to('fill', 4, size[i], size[i+1])
         table.insert(self.patches, patch)
     end
 end
@@ -58,6 +60,17 @@ function LizardLeg:init_skeleton()
         exponential = false,
         drag = 0
     })
+
+    local elbow_to_fixation_angle = math.atan2(-self.elbow_pos.y, -self.elbow_pos.x)
+    local elbow_to_paw_angle = math.atan2((self.target - self.elbow_pos).y, (self.target - self.elbow_pos).x)
+    local fixation_to_paw_angle = elbow_to_paw_angle - elbow_to_fixation_angle
+    self.elbow:add_constraint(skeleton.constraint(
+        self.fixation,
+        self.paw,
+        fixation_to_paw_angle - math.pi/2,
+        fixation_to_paw_angle + math.pi/2,
+        12*math.pi
+    ))
     self.fixation.pos = self.root_joint.pos
     self.elbow.pos = elbow_pos
     self.paw.pos = paw_pos
@@ -95,7 +108,7 @@ function LizardBody:build(target_joint, length, head_pos, delta_pos)
         length_max = 60,
         length_absolute_min = 1,
         length_absolute_max = 1e5,
-        speed = 200,
+        speed = 50,
         exponential = false,
         drag = 0
     })
@@ -119,9 +132,10 @@ function LizardBody:build(target_joint, length, head_pos, delta_pos)
         self.joints[i]:add_constraint(c)
     end
     self.patches = {}
-    for i, joint in ipairs(self.joints) do
-        local patch = skin.Circle:new(joint)
-        patch:set('line', 5)
+    local size = {4,9,6,7, 7,5,5,4, 3,2,2,2, 1,1,0}
+    for i = 1, #self.joints-1 do
+        local patch = skin.CircleSeries:new(self.joints[i], self.joints[i+1])
+        patch:set_from_to('fill', 4, size[i], size[i+1])
         table.insert(self.patches, patch)
     end
 end

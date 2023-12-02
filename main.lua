@@ -13,13 +13,15 @@ local inspect = require "inspect"
 local imgui = require "cimgui"
 local mgl = require "MGL"
 local skeleton = require "skeleton"
+local draw_modifier = require "draw_modifier"
 
 local mouse_joint = skeleton.Joint:new(mgl.vec2(10, 100))
 
 local demo_lizard = require "demo_lizard"
 
 local body = demo_lizard.LizardBody:new()
-body:build(mouse_joint, 10, mgl.vec2(10, 100), mgl.vec2(15, 0))
+body:build(mouse_joint, 15, mgl.vec2(10, 100), mgl.vec2(15, 0))
+body.draw = draw_modifier.color(body.draw, {.8, .6, .2})
 local legs = {}
 
 for _, is_back in ipairs({false, true}) do
@@ -28,9 +30,9 @@ for _, is_back in ipairs({false, true}) do
         local t
         if is_right then t = -1 else t = 1 end
         if is_back then
-            leg:build(body.joints[4], body.joints[2], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+            leg:build(body.joints[4], body.joints[2], mgl.vec2(40, -25 * t), mgl.vec2(10, -20 * t))
         else
-            leg:build(body.joints[8], body.joints[6], mgl.vec2(35, -20 * t), mgl.vec2(10, -15 * t))
+            leg:build(body.joints[8], body.joints[6], mgl.vec2(40, -25 * t), mgl.vec2(10, -20 * t))
         end
         table.insert(legs, leg)
     end
@@ -49,10 +51,10 @@ love.draw = function()
     imgui.Render()
     imgui.love.RenderDrawLists()
 
-    body:draw()
     for _, l in ipairs(legs) do
         l:draw()
     end
+    body:draw()
 end
 
 love.update = function(dt)
