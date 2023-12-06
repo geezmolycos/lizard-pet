@@ -15,34 +15,25 @@ local mgl = require "MGL"
 local skeleton = require "skeleton"
 local draw_modifier = require "draw_modifier"
 
-local mouse_joint = skeleton.Joint:new(mgl.vec2(10, 100))
+local mouse_joint = skeleton.Joint:new(mgl.vec2(50, 200))
 
-local demo_lizard = require "demo_lizard"
+local dragon = require "dragon"
 
-local body = demo_lizard.LizardBody:new()
-body:build(mouse_joint, 15, mgl.vec2(10, 100), mgl.vec2(15, 0))
-body.draw = draw_modifier.color(body.draw, {.8, .6, .2})
-local legs = {}
+local body = dragon.Body:new()
+body:build(mouse_joint, 22, mgl.vec2(60, 200), mgl.vec2(10, 0))
+body.draw = draw_modifier.color({.7, .7, .7}, body.draw)
 
-for _, is_back in ipairs({false, true}) do
-    for _, is_right in ipairs({false, true}) do
-        local leg = demo_lizard.LizardLeg:new()
-        local t
-        if is_right then t = -1 else t = 1 end
-        if is_back then
-            leg:build(body.joints[4], body.joints[2], mgl.vec2(40, -25 * t), mgl.vec2(10, -20 * t))
-        else
-            leg:build(body.joints[8], body.joints[6], mgl.vec2(40, -25 * t), mgl.vec2(10, -20 * t))
-        end
-        table.insert(legs, leg)
-    end
-end
+local left_wing = dragon.Wing:new()
+left_wing:build(body.joints[6], body.joints[5], body.joints[10], body.joints[5], body.joints[13], mgl.rotate(math.pi/2))
+
+local right_wing = dragon.Wing:new()
+right_wing:build(body.joints[6], body.joints[5], body.joints[10], body.joints[5], body.joints[13], mgl.rotate(-math.pi/2) * mgl.scale(mgl.vec2(1, -1)))
 
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
-
+local curve = love.math.newBezierCurve({25,25, 25,125, 75,25, 125,25})
 love.draw = function()
     -- example window
     imgui.ShowDemoWindow()
@@ -50,11 +41,10 @@ love.draw = function()
     -- code to render imgui
     imgui.Render()
     imgui.love.RenderDrawLists()
-
-    for _, l in ipairs(legs) do
-        l:draw()
-    end
+    left_wing:draw()
+    right_wing:draw()
     body:draw()
+    love.graphics.line(curve:render())
 end
 
 love.update = function(dt)
@@ -66,9 +56,14 @@ love.update = function(dt)
         time = dt,
         mouse_pos = target
     })
-    for _, l in ipairs(legs) do
-        l:update({time = dt})
-    end
+    left_wing:update({
+        time = dt,
+        mouse_pos = target
+    })
+    right_wing:update({
+        time = dt,
+        mouse_pos = target
+    })
 end
 
 love.mousemoved = function(x, y, ...)

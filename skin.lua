@@ -54,6 +54,7 @@ function DoubleJoint:new(base_joint, head_joint)
 end
 
 local Line = setmetatable({}, {__index = DoubleJoint})
+skin.Line = Line
 
 function Line:set()
 end
