@@ -193,7 +193,9 @@ function Joint:influence_lengths(without, time)
 end
 
 function Joint:influence_constraints(without, time)
+    local i = 0
     for constraint, _ in pairs(self.constraints) do
+        i = i + 1
         if without == nil or constraint.moving ~= without and without[constraint.moving] == nil then
             local fixed_influence = constraint.fixed:get_influence(self)
             local moving_influence = constraint.moving:get_influence(self)

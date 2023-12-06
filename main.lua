@@ -1,4 +1,7 @@
 
+if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
+    require("lldebugger").start()
+end
 -- Make sure the shared library can be found through package.cpath before loading the module.
 -- For example, if you put it in the LÖVE save directory, you could do something like this:
 local lua_path = love.filesystem.getSource() .. "/lua"
@@ -77,6 +80,10 @@ love.mousepressed = function(x, y, button, ...)
     imgui.love.MousePressed(button)
     if not imgui.love.GetWantCaptureMouse() then
         -- your code here 
+        left_wing.joints.paw.pos = mgl.vec2(x, y)
+        for name, joint in pairs(left_wing.joints) do
+            print(name, inspect(joint, {depth = 2}))
+        end
     end
 end
 

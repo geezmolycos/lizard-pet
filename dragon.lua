@@ -29,7 +29,7 @@ function Body:build(target_joint, length, head_pos, delta_pos)
     for i = 2, length do
         joint_pos = joint_pos + delta_pos
         local joint = skeleton.Joint:new(joint_pos)
-        self.joints[#self.joints]:add_mutual_neighbor(joint, skeleton.link(delta_length, delta_length, 500))
+        self.joints[#self.joints]:add_mutual_neighbor(joint, skeleton.link(delta_length, delta_length, 1e5))
         table.insert(self.joints, joint)
     end
     for i = 3, length-1 do
@@ -229,9 +229,10 @@ function Wing:draw(args)
         self:draw_membrane(self.joints.finger3.pos, self.joints.finger4.pos, self.joints.paw.pos, 0.3)
     end)()
     draw_modifier.color({.7, .7, .7}, function ()
-        for _, j in pairs(self.joints) do
-            love.graphics.circle('line', j.pos.x, j.pos.y, 3)
-        end
+        love.graphics.circle('fill', self.joints.main_root.pos.x * 0.8 + self.joints.elbow.pos.x * 0.2, self.joints.main_root.pos.y * 0.8 + self.joints.elbow.pos.y * 0.2, 5)
+        love.graphics.circle('fill', self.joints.main_root.pos.x * 0.7 + self.joints.elbow.pos.x * 0.3, self.joints.main_root.pos.y * 0.7 + self.joints.elbow.pos.y * 0.3, 4)
+        love.graphics.circle('fill', self.joints.paw.pos.x * 0.9 + self.joints.elbow.pos.x * 0.1, self.joints.paw.pos.y * 0.9 + self.joints.elbow.pos.y * 0.1, 3)
+        love.graphics.circle('fill', self.joints.paw.pos.x, self.joints.paw.pos.y, 4)
         for _, patch in ipairs(self.patches) do
             patch:draw(args)
         end
