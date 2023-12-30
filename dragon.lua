@@ -225,10 +225,8 @@ end
 function Wing:update(args)
     self.joints.main_root.pos = self.main_attach.pos
     self.joints.main_root:influence_recursive(nil, args.time)
-    self.joints.main_root:finish_recursive(nil, args.time)
     self.joints.hind_root.pos = self.hind_attach.pos
     self.joints.hind_root:influence_recursive(nil, args.time)
-    self.joints.hind_root:finish_recursive(nil, args.time)
 end
 
 function Wing:draw_membrane_triangle(p1, p2, base)

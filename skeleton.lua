@@ -245,30 +245,8 @@ function Joint:influence_recursive(without, time)
     self:influence_all(without, time)
     for joint, link in pairs(self.neighbors) do
         if without == nil or joint ~= without and without[joint] == nil then
-            if joint.influence_count >= joint.neighbor_count - 1 then
-                joint:update_self()
-                joint:influence_recursive(self, time)
-            end
-        end
-    end
-end
-
-function Joint:finish_recursive(without, time)
-    if self.influence_count and self.influence_count < self.neighbor_count - 1 then
-        -- has multiple downstream joints
-        -- need to update all downstream joints
-        self:update_self()
-        self:influence_all(self.influences, time)
-        for joint, link in pairs(self.neighbors) do
-            if self.influences[joint] == nil then
-                joint:update_self()
-                joint:influence_recursive(self, time)
-            end
-        end
-    end
-    for joint, link in pairs(self.neighbors) do
-        if joint ~= without then
-            joint:finish_recursive(self, time)
+            joint:update_self()
+            joint:influence_recursive(self, time)
         end
     end
 end
