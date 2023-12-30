@@ -12,6 +12,7 @@ package.path = string.format("%s;%s/?/init.lua", package.path, lua_path)
 package.path = string.format("%s;%s/?.%s", package.path, lua_path, "lua")
 package.cpath = string.format("%s;%s/?.%s", package.cpath, lib_path, extension)
 
+local ffi = require "ffi"
 local inspect = require "inspect"
 local imgui = require "cimgui"
 local mgl = require "MGL"
@@ -37,9 +38,16 @@ love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
 local curve = love.math.newBezierCurve({25,25, 25,125, 75,25, 125,25})
+local x = ffi.new("float[1]")
+x[0] = 1
 love.draw = function()
     -- example window
-    imgui.ShowDemoWindow()
+    local status = imgui.SliderFloat("SliderFloat", x, 0.0, 1.0)
+    imgui.Text("status: %d", ffi.cast('int', status))
+    if status then
+        left_wing:spread(x[0])
+        right_wing:spread(x[0])
+    end
     
     -- code to render imgui
     imgui.Render()

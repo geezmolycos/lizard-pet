@@ -83,6 +83,20 @@ end
 local Wing = setmetatable({}, {__index = part.Part})
 dragon.Wing = Wing
 
+Wing.spread_pos = {
+    main_front = {0, -10},
+    main_root = {0, 0},
+    elbow = {40, 10},
+    paw = {80, -20},
+    finger1 = {120, -40},
+    finger2 = {190, 0},
+    finger3 = {160, 20},
+    finger4 = {100, 40},
+    hind_front = {0, -10},
+    hind_root = {0, 0},
+    hind = {30, 40}
+}
+
 local bounce_speed = 10000
 local fast_speed = 100
 local fast_angular_speed_exp = 3
@@ -104,15 +118,21 @@ function Wing:hind_rel_to_global()
     return rel_to_global * self.transform
 end
 
-function add_constraint(first, second, third)
-    local to_first = first.pos - second.pos
-    local to_third = third.pos - second.pos
+function add_constraint(first, second, third, first_pos, second_pos, third_pos, alt_angle, strength)
+    local to_first = (first_pos or first.pos) - (second_pos or second.pos)
+    local to_third = (third_pos or third.pos) - (second_pos or second.pos)
     local to_first_angle = math.atan2(to_first.y, to_first.x)
     local to_third_angle = math.atan2(to_third.y, to_third.x)
     local angle = to_first_angle - to_third_angle
+    if alt_angle then
+        -- local angle_diff = (math.rad(alt_angle) - angle) % (2*math.pi)
+        local angle_diff = math.rad(alt_angle)
+        angle = angle + angle_diff * strength
+    end
     second:add_constraint(skeleton.constraint(
         third, first, angle, angle, fast_angular_speed_exp, true
     ))
+    return angle
 end
 
 function curve(p1, p2, base, strength)
@@ -135,17 +155,7 @@ function Wing:build(main_attach, main_front, hind_attach, hind_front, hind_back,
     local hind_rel_to_global = self:hind_rel_to_global()
     self.joints = {}
     local names = {'main_root', 'elbow', 'paw', 'finger1', 'finger2', 'finger3', 'finger4', 'hind_root', 'hind'}
-    local pos = {
-        main_root = {0, 0},
-        elbow = {40, 10},
-        paw = {80, -20},
-        finger1 = {120, -40},
-        finger2 = {190, 0},
-        finger3 = {160, 20},
-        finger4 = {100, 40},
-        hind_root = {0, 0},
-        hind = {30, 40}
-    }
+    local pos = Wing.spread_pos
     for k, v in pairs(pos) do
         pos[k] = mgl.vec2(v)
     end
@@ -181,12 +191,35 @@ function Wing:build(main_attach, main_front, hind_attach, hind_front, hind_back,
             table.insert(self.patches, patch)
         end
     end
-    add_constraint(self.joints.elbow, self.joints.main_root, self.main_front)
-    add_constraint(self.joints.paw, self.joints.elbow, self.joints.main_root)
-    for _, name in ipairs({'finger1', 'finger2', 'finger3', 'finger4'}) do
-        add_constraint(self.joints[name], self.joints.paw, self.joints.elbow)
+    self:spread(1)
+end
+
+function Wing:spread(strength)
+    local main_rel_to_global = self:main_rel_to_global()
+    local hind_rel_to_global = self:hind_rel_to_global()
+    local pos = Wing.spread_pos
+    local main_sign = mgl.determinant(main_rel_to_global)
+    local hind_sign = mgl.determinant(hind_rel_to_global)
+    function M(pos)
+        return mgl.vec2(main_rel_to_global * mgl.vec3(pos, 1))
     end
-    add_constraint(self.joints.hind, self.joints.hind_root, self.hind_front)
+    function H(pos)
+        return mgl.vec2(hind_rel_to_global * mgl.vec3(pos, 1))
+    end
+    self.joints.main_root.constraints = {}
+    self.joints.elbow.constraints = {}
+    self.joints.paw.constraints = {}
+    self.joints.hind_root.constraints = {}
+    add_constraint(self.joints.elbow, self.joints.main_root, self.main_front,
+        M(Wing.spread_pos.elbow), M(Wing.spread_pos.main_root), M(Wing.spread_pos.main_front), 70 * main_sign, 1-strength)
+    add_constraint(self.joints.paw, self.joints.elbow, self.joints.main_root,
+        M(Wing.spread_pos.paw), M(Wing.spread_pos.elbow), M(Wing.spread_pos.main_root), -120 * main_sign, 1-strength)
+    for _, name in ipairs({'finger1', 'finger2', 'finger3', 'finger4'}) do
+        add_constraint(self.joints[name], self.joints.paw, self.joints.elbow,
+            M(Wing.spread_pos[name]), M(Wing.spread_pos.paw), M(Wing.spread_pos.elbow), ({150, 120, 110, 80})[_] * main_sign, 1-strength)
+    end
+    add_constraint(self.joints.hind, self.joints.hind_root, self.hind_front,
+        H(Wing.spread_pos.hind), H(Wing.spread_pos.hind_root), H(Wing.spread_pos.hind_front), 10 * hind_sign, 1-strength)
 end
 
 function Wing:update(args)
