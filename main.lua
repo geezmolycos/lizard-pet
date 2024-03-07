@@ -36,10 +36,10 @@ right_wing:build(body.joints[6], body.joints[5], body.joints[10], body.joints[5]
 
 local legs = {dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:new()}
 
-legs[1]:build(body.joints[6], body.joints[5], mgl.vec2(30, 30), mgl.vec2(10, 20), mgl.vec2(10, 20))
-legs[2]:build(body.joints[6], body.joints[5], mgl.vec2(30, -30), mgl.vec2(10, -20), mgl.vec2(10, -20))
-legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(40, -40), mgl.vec2(12, -17), mgl.vec2(17, -19))
-legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(40, 40), mgl.vec2(12, 17), mgl.vec2(17, 19))
+legs[1]:build(body.joints[6], body.joints[5], mgl.vec2(20, 20), mgl.vec2(8, 16), mgl.vec2(8, 16), -70, 1)
+legs[2]:build(body.joints[6], body.joints[5], mgl.vec2(20, -20), mgl.vec2(8, -16), mgl.vec2(8, -16), 70, 1)
+legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(30, -30), mgl.vec2(12, -17), mgl.vec2(12, -17), 70, 1.5)
+legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 17), mgl.vec2(12, 17), -70, 1.5)
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
@@ -80,17 +80,19 @@ love.draw = function()
     -- code to render imgui
     imgui.Render()
     imgui.love.RenderDrawLists()
-    left_wing:draw()
-    right_wing:draw()
-    body:draw()
+    love.graphics.push('all')
     for _, leg in ipairs(legs) do
         leg:draw()
     end
+    left_wing:draw()
+    right_wing:draw()
+    body:draw()
     love.graphics.circle("line", target.x, target.y, 10)
+    love.graphics.pop('all')
 end
 
 local takeoff_delay = 1
-local takeoff_distance = 800
+local takeoff_distance = 500
 local landing_distance = 200
 
 love.update = function(dt)
@@ -113,7 +115,7 @@ love.update = function(dt)
         right_wing:spread(x[0])
         speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
     end
-    if state == 'landed' and mgl.length(target - body.joints[1].pos) > 500 then
+    if state == 'landed' and mgl.length(target - body.joints[1].pos) > takeoff_distance then
         state = 'takeoff'
         takeoff_delay = 1
         air[0] = 1
@@ -164,7 +166,7 @@ love.update = function(dt)
         end
         speed = speed + speed_diff
     end
-    if state == 'flying' and mgl.length(target - body.joints[1].pos) < 100 then
+    if state == 'flying' and mgl.length(target - body.joints[1].pos) < landing_distance then
         state = 'landing'
         air[0] = 0
         for i, leg in ipairs(legs) do

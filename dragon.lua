@@ -292,14 +292,16 @@ end
 local Leg = setmetatable({}, {__index = part.Part})
 dragon.Leg = Leg
 
-function Leg:build(root_joint, front_joint, target, elbow_pos, air_pos)
+function Leg:build(root_joint, front_joint, target, elbow_pos, air_pos, paw_angle, thickness)
     self.root_joint = root_joint
     self.front_joint = front_joint
     self.target = target
     self.elbow_pos = elbow_pos
     self.air_pos = air_pos
+    self.paw_angle = paw_angle
+    self.paw_length = 10
     self.air_stage = 0
-    self.speed = 400
+    self.speed = 600
     self.air_speed_multiplier = 10
     self.step = 40
     self.fixation = skeleton.Joint:new()
@@ -308,11 +310,11 @@ function Leg:build(root_joint, front_joint, target, elbow_pos, air_pos)
     self.current_target = skeleton.Joint:new()
     self:init_skeleton()
     self.patches = {}
-    local names = {'fixation', 'elbow', 'paw', 'current_target'}
-    local size = {5,2,2,3}
+    local names = {'fixation', 'elbow', 'paw'}
+    local size = {7*thickness,4*thickness,4*thickness,5*thickness}
     for i = 1, #names-1 do
         local patch = skin.CircleSeries:new(self[names[i]], self[names[i+1]])
-        patch:set_from_to('fill', 4, size[i], size[i+1])
+        patch:set_from_to('fill', 8, size[i], size[i+1])
         table.insert(self.patches, patch)
     end
 end
@@ -406,14 +408,29 @@ function Leg:update(args)
 end
 
 function Leg:draw(args)
-    for _, patch in ipairs(self.patches) do
-        patch:draw()
-    end
-    local rel_to_global = self:get_rel_to_global()
-    local new_target = mgl.vec2(rel_to_global * mgl.vec3(self.target, 1))
-    love.graphics.circle('line', new_target.x, new_target.y, 10)
-    local current_target = mgl.vec2(mgl.vec3(self.current_target.pos, 1))
-    love.graphics.circle('line', current_target.x, current_target.y, 10)
+    local elbow_to_front = self.paw.pos - self.elbow.pos
+    local front_angle = math.atan2(elbow_to_front.y, elbow_to_front.x)
+    local paw_abs_angle = front_angle + self.paw_angle
+    local paw_abs_direction = mgl.vec2(math.cos(paw_abs_angle), math.sin(paw_abs_angle))
+    local paw_vector = paw_abs_direction * self.paw_length
+    local paw_normal = mgl.vec2(mgl.rotate(90) * mgl.vec3(paw_vector, 1))
+    local paw_pos = self.paw.pos + paw_vector
+    love.graphics.setColor(.2, .2, .2)
+    love.graphics.setLineWidth(14)
+    love.graphics.line(self.paw.pos.x, self.paw.pos.y, paw_pos.x, paw_pos.y)
+    love.graphics.circle('fill', paw_pos.x, paw_pos.y, 7)
+    love.graphics.circle('fill', self.paw.pos.x, self.paw.pos.y, 7)
+    draw_modifier.color({.5, .5, .5}, function ()
+        for _, patch in ipairs(self.patches) do
+            patch:draw()
+        end
+    end)()
+
+    -- local rel_to_global = self:get_rel_to_global()
+    -- local new_target = mgl.vec2(rel_to_global * mgl.vec3(self.target, 1))
+    -- love.graphics.circle('line', new_target.x, new_target.y, 10)
+    -- local current_target = mgl.vec2(mgl.vec3(self.current_target.pos, 1))
+    -- love.graphics.circle('line', current_target.x, current_target.y, 10)
 end
 
 function Leg:air(air_stage)
