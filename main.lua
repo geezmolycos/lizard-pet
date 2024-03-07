@@ -38,19 +38,26 @@ local legs = {dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:n
 
 legs[1]:build(body.joints[6], body.joints[5], mgl.vec2(30, 30), mgl.vec2(10, 20), mgl.vec2(10, 20))
 legs[2]:build(body.joints[6], body.joints[5], mgl.vec2(30, -30), mgl.vec2(10, -20), mgl.vec2(10, -20))
-legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(40, -40), mgl.vec2(12, -17), mgl.vec2(12, -17))
-legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(40, 40), mgl.vec2(12, 17), mgl.vec2(12, 17))
+legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(40, -40), mgl.vec2(12, -17), mgl.vec2(17, -19))
+legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(40, 40), mgl.vec2(12, 17), mgl.vec2(17, 19))
 
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
 local x = ffi.new("float[1]")
 local air = ffi.new("int[1]")
-x[0] = 1
+local state = 'landed'
+local speed = 1
+local fly_freq = 1.8
+-- landed, takeoff, flying, landing
+
+x[0] = 0.2
+left_wing:spread(x[0])
+right_wing:spread(x[0])
 air[0] = 0
 local leg_step = 0
 local leg_step_count = 0
-local time = 0
+local clock = 0
 local target
 love.draw = function()
     -- example window
@@ -67,6 +74,8 @@ love.draw = function()
         end
     end
     imgui.Text("leg: %d", ffi.cast('int', leg_step))
+    imgui.Text("state: " .. state)
+    imgui.Text("speed: " .. speed)
     
     -- code to render imgui
     imgui.Render()
@@ -80,14 +89,78 @@ love.draw = function()
     love.graphics.circle("line", target.x, target.y, 10)
 end
 
+local takeoff_delay = 1
+
 love.update = function(dt)
-    time = time + dt
+    clock = clock + dt
     imgui.love.Update(dt)
     imgui.NewFrame()
 
     target = mgl.vec2(love.mouse.getPosition())
-    target.x = target.x + 100 * perlin:noise(time, 123, 456)
-    target.y = target.y + 100 * perlin:noise(time, 986, 461)
+    target.x = target.x + 100 * perlin:noise(clock, 123.8975, 456.0231)
+    target.y = target.y + 100 * perlin:noise(clock, 986.423, 461.511)
+    if state == 'landed' then
+        local target = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
+        target = target * 0.2 + 0.1
+        local diff = target - x[0]
+        if math.abs(diff) > dt / 1 then
+            diff = diff / math.abs(diff) * dt/1
+        end
+        x[0] = x[0] + diff
+        left_wing:spread(x[0])
+        right_wing:spread(x[0])
+        speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
+    end
+    if state == 'landed' and mgl.length(target - body.joints[1].pos) > 500 then
+        state = 'takeoff'
+        takeoff_delay = 1
+        air[0] = 1
+        for i, leg in ipairs(legs) do
+            leg:air(1)
+        end
+    end
+    if state == 'takeoff' then
+        local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
+        target = target * 0.3 + 0.4
+        local diff = target - x[0]
+        if math.abs(diff) > dt / 0.5 then
+            diff = diff / math.abs(diff) * dt/0.5
+        end
+        x[0] = x[0] + diff
+        if math.abs(target - x[0]) < 0.02 then
+            takeoff_delay = takeoff_delay - dt
+            if takeoff_delay <= 0 then
+                state = 'flying'
+                for i, leg in ipairs(legs) do
+                    leg:air(2)
+                end
+            end
+        end
+        left_wing:spread(x[0])
+        right_wing:spread(x[0])
+        left_wing:flap(x[0])
+        right_wing:flap(x[0])
+    end
+    if state == 'flying' then
+        local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
+        target = target * 0.3 + 0.4
+        local diff = target - x[0]
+        if math.abs(diff) > dt / 0.5 then
+            diff = diff / math.abs(diff) * dt/0.5
+        end
+        x[0] = x[0] + diff
+        left_wing:spread(x[0])
+        right_wing:spread(x[0])
+        left_wing:flap(x[0])
+        right_wing:flap(x[0])
+        local target_speed = -math.sin(clock * fly_freq * math.pi) / 2 + 0.5
+        target_speed = target_speed * 0.3 + 0.4
+        local speed_diff = target_speed - speed
+        if math.abs(speed_diff) > dt / 0.5 then
+            speed_diff = speed_diff / math.abs(speed_diff) * dt/0.5
+        end
+        speed = speed + speed_diff
+    end
     local next_leg_step = leg_step
     for i, leg in ipairs(legs) do
         local args = {
@@ -109,15 +182,18 @@ love.update = function(dt)
     end
     body:update({
         time = dt,
-        mouse_pos = target
+        mouse_pos = target,
+        speed = speed
     })
     left_wing:update({
         time = dt,
-        mouse_pos = target
+        mouse_pos = target,
+        speed = (state == 'flying' or state == 'takeoff') and 10 or 1
     })
     right_wing:update({
         time = dt,
-        mouse_pos = target
+        mouse_pos = target,
+        speed = (state == 'flying' or state == 'takeoff') and 10 or 1
     })
 end
 

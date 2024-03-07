@@ -19,8 +19,8 @@ function Body:build(target_joint, length, head_pos, delta_pos)
         length_max = 60,
         length_absolute_min = 1,
         length_absolute_max = 1e5,
-        speed = 1,
-        exponential = true,
+        speed = 500,
+        exponential = false,
         drag = 0
     })
     self.joints = {self.head}
@@ -69,9 +69,7 @@ function Body:destroy()
 end
 
 function Body:update(args)
-    if not args.stay then
-        self.target_joint.pos = args.mouse_pos
-    end
+    self.target_joint.pos = args.mouse_pos
     if not args.speed then args.speed = 1 end
     self.target_joint:influence_recursive(nil, args.time * args.speed)
 end
@@ -226,11 +224,28 @@ function Wing:spread(strength)
         H(Wing.spread_pos.hind), H(Wing.spread_pos.hind_root), H(Wing.spread_pos.hind_front), 10 * hind_sign, 1-strength)
 end
 
+function Wing:flap(strength)
+    local main_rel_to_global = self:main_rel_to_global()
+    local hind_rel_to_global = self:hind_rel_to_global()
+    local pos = Wing.spread_pos
+    local main_sign = mgl.determinant(main_rel_to_global)
+    local hind_sign = mgl.determinant(hind_rel_to_global)
+    function M(pos)
+        return mgl.vec2(main_rel_to_global * mgl.vec3(pos, 1))
+    end
+    function H(pos)
+        return mgl.vec2(hind_rel_to_global * mgl.vec3(pos, 1))
+    end
+    self.joints.main_root.constraints = {}
+    add_constraint(self.joints.elbow, self.joints.main_root, self.main_front,
+        M(Wing.spread_pos.elbow), M(Wing.spread_pos.main_root), M(Wing.spread_pos.main_front), (140 - strength *140) * main_sign, 1-strength)
+end
+
 function Wing:update(args)
     self.joints.main_root.pos = self.main_attach.pos
-    self.joints.main_root:influence_recursive(nil, args.time)
+    self.joints.main_root:influence_recursive(nil, args.time * args.speed)
     self.joints.hind_root.pos = self.hind_attach.pos
-    self.joints.hind_root:influence_recursive(nil, args.time)
+    self.joints.hind_root:influence_recursive(nil, args.time * args.speed)
 end
 
 function Wing:draw_membrane_triangle(p1, p2, base)
@@ -371,10 +386,13 @@ function Leg:update(args)
         current_target = new_target
         args.moved = true
     end
-    if self.air_stage >= 1 then
+    if self.air_stage == 1 then
         local diff = mgl.vec2(rel_to_global * mgl.vec3(self.air_pos, 1)) - self.current_target.pos
         diff = diff / mgl.length(diff)
-        current_target = self.current_target.pos + diff * args.time * 60
+        current_target = self.current_target.pos + diff * args.time * 400
+    end
+    if self.air_stage == 2 then
+        current_target = mgl.vec2(rel_to_global * mgl.vec3(self.air_pos, 1))
     end
 
     local multiplier = 1
