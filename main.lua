@@ -90,6 +90,8 @@ love.draw = function()
 end
 
 local takeoff_delay = 1
+local takeoff_distance = 800
+local landing_distance = 200
 
 love.update = function(dt)
     clock = clock + dt
@@ -131,6 +133,7 @@ love.update = function(dt)
             takeoff_delay = takeoff_delay - dt
             if takeoff_delay <= 0 then
                 state = 'flying'
+                air[0] = 2
                 for i, leg in ipairs(legs) do
                     leg:air(2)
                 end
@@ -142,9 +145,9 @@ love.update = function(dt)
         right_wing:flap(x[0])
     end
     if state == 'flying' then
-        local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
-        target = target * 0.3 + 0.4
-        local diff = target - x[0]
+        local wing_speed_target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
+        wing_speed_target = wing_speed_target * 0.3 + 0.4
+        local diff = wing_speed_target - x[0]
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
@@ -160,6 +163,24 @@ love.update = function(dt)
             speed_diff = speed_diff / math.abs(speed_diff) * dt/0.5
         end
         speed = speed + speed_diff
+    end
+    if state == 'flying' and mgl.length(target - body.joints[1].pos) < 100 then
+        state = 'landing'
+        air[0] = 0
+        for i, leg in ipairs(legs) do
+            leg:air(0)
+        end
+    end
+    if state == 'landing' then
+        local target_speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
+        local speed_diff = target_speed - speed
+        if math.abs(speed_diff) > dt / 2 then
+            speed_diff = speed_diff / math.abs(speed_diff) * dt/2
+        end
+        speed = speed + speed_diff
+        if math.abs(target_speed - speed) < 0.02 then
+            state = 'landed'
+        end
     end
     local next_leg_step = leg_step
     for i, leg in ipairs(legs) do
