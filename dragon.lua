@@ -6,7 +6,7 @@ local skeleton = require "skeleton"
 local skin = require "skin"
 local part = require "part"
 local draw_modifier = require "draw_modifier"
-
+local perlin = require "perlin"
 
 local Body = setmetatable({}, {__index = part.Part})
 dragon.Body = Body
@@ -19,7 +19,7 @@ function Body:build(target_joint, length, head_pos, delta_pos)
         length_max = 60,
         length_absolute_min = 1,
         length_absolute_max = 1e5,
-        speed = 3,
+        speed = 1,
         exponential = true,
         drag = 0
     })
@@ -69,8 +69,11 @@ function Body:destroy()
 end
 
 function Body:update(args)
-    self.target_joint.pos = args.mouse_pos
-    self.target_joint:influence_recursive(nil, args.time)
+    if not args.stay then
+        self.target_joint.pos = args.mouse_pos
+    end
+    if not args.speed then args.speed = 1 end
+    self.target_joint:influence_recursive(nil, args.time * args.speed)
 end
 
 function Body:draw(args)
@@ -118,7 +121,8 @@ function Wing:hind_rel_to_global()
     return rel_to_global * self.transform
 end
 
-function add_constraint(first, second, third, first_pos, second_pos, third_pos, alt_angle, strength)
+function add_constraint(first, second, third, first_pos, second_pos, third_pos, alt_angle, strength, hardness)
+    if not hardness then hardness = 1 end
     local to_first = (first_pos or first.pos) - (second_pos or second.pos)
     local to_third = (third_pos or third.pos) - (second_pos or second.pos)
     local to_first_angle = math.atan2(to_first.y, to_first.x)
@@ -130,7 +134,7 @@ function add_constraint(first, second, third, first_pos, second_pos, third_pos, 
         angle = angle + angle_diff * strength
     end
     second:add_constraint(skeleton.constraint(
-        third, first, angle, angle, fast_angular_speed_exp, true
+        third, first, angle, angle, fast_angular_speed_exp * hardness, true
     ))
     return angle
 end
@@ -216,7 +220,7 @@ function Wing:spread(strength)
         M(Wing.spread_pos.paw), M(Wing.spread_pos.elbow), M(Wing.spread_pos.main_root), -120 * main_sign, 1-strength)
     for _, name in ipairs({'finger1', 'finger2', 'finger3', 'finger4'}) do
         add_constraint(self.joints[name], self.joints.paw, self.joints.elbow,
-            M(Wing.spread_pos[name]), M(Wing.spread_pos.paw), M(Wing.spread_pos.elbow), ({150, 120, 110, 80})[_] * main_sign, 1-strength)
+            M(Wing.spread_pos[name]), M(Wing.spread_pos.paw), M(Wing.spread_pos.elbow), ({150, 120, 110, 80})[_] * main_sign, 1-strength, 3)
     end
     add_constraint(self.joints.hind, self.joints.hind_root, self.hind_front,
         H(Wing.spread_pos.hind), H(Wing.spread_pos.hind_root), H(Wing.spread_pos.hind_front), 10 * hind_sign, 1-strength)
@@ -268,6 +272,134 @@ function Wing:draw(args)
             patch:draw(args)
         end
     end)()
+end
+
+local Leg = setmetatable({}, {__index = part.Part})
+dragon.Leg = Leg
+
+function Leg:build(root_joint, front_joint, target, elbow_pos, air_pos)
+    self.root_joint = root_joint
+    self.front_joint = front_joint
+    self.target = target
+    self.elbow_pos = elbow_pos
+    self.air_pos = air_pos
+    self.air_stage = 0
+    self.speed = 400
+    self.air_speed_multiplier = 10
+    self.step = 40
+    self.fixation = skeleton.Joint:new()
+    self.elbow = skeleton.Joint:new()
+    self.paw = skeleton.Joint:new()
+    self.current_target = skeleton.Joint:new()
+    self:init_skeleton()
+    self.patches = {}
+    local names = {'fixation', 'elbow', 'paw', 'current_target'}
+    local size = {5,2,2,3}
+    for i = 1, #names-1 do
+        local patch = skin.CircleSeries:new(self[names[i]], self[names[i+1]])
+        patch:set_from_to('fill', 4, size[i], size[i+1])
+        table.insert(self.patches, patch)
+    end
+end
+
+function Leg:destroy()
+end
+
+function Leg:get_rel_to_global()
+    local root_to_front = self.front_joint.pos - self.root_joint.pos
+    local root_to_front_dir = mgl.normalize(root_to_front)
+    local root_to_front_angle = math.atan2(root_to_front_dir.y, root_to_front_dir.x)
+    local rel_to_global = mgl.translate(self.root_joint.pos) * mgl.rotate(root_to_front_angle)
+    return rel_to_global
+end
+
+function Leg:init_skeleton()
+    local rel_to_global = self:get_rel_to_global()
+    local paw_pos_rel = self.target
+    local elbow_len = mgl.length(self.elbow_pos)
+    local paw_len = mgl.length(paw_pos_rel - self.elbow_pos)
+    local paw_pos = mgl.vec2(rel_to_global * mgl.vec3(paw_pos_rel, 1))
+    local elbow_pos = mgl.vec2(rel_to_global * mgl.vec3(self.elbow_pos, 1))
+    self.fixation:add_mutual_neighbor(self.elbow, skeleton.link(elbow_len, elbow_len, 500))
+    self.elbow:add_mutual_neighbor(self.paw, skeleton.link(paw_len, paw_len, 500))
+    self.paw:add_mutual_neighbor(self.current_target, {
+        length_min = 0.1,
+        length_max = 1,
+        length_absolute_min = 0.1,
+        length_absolute_max = 1e5,
+        speed = self.speed,
+        exponential = false,
+        drag = 0
+    })
+
+    local elbow_to_fixation_angle = math.atan2(self.elbow_pos.y, self.elbow_pos.x)
+    if elbow_to_fixation_angle < 0 then
+        self.fixation:add_constraint(skeleton.constraint(
+            self.front_joint,
+            self.elbow,
+            elbow_to_fixation_angle-math.pi,
+            elbow_to_fixation_angle,
+            12*math.pi
+        ))
+    else
+        self.fixation:add_constraint(skeleton.constraint(
+            self.front_joint,
+            self.elbow,
+            elbow_to_fixation_angle,
+            elbow_to_fixation_angle+math.pi,
+            12*math.pi
+        ))
+    end
+    self.fixation.pos = self.root_joint.pos
+    self.elbow.pos = elbow_pos
+    self.paw.pos = paw_pos
+    self.current_target.pos = paw_pos
+end
+
+function Leg:update(args)
+    local rel_to_global = self:get_rel_to_global()
+    local new_target = mgl.vec2(rel_to_global * mgl.vec3(self.target, 1))
+    local current_target = self.current_target.pos
+    if mgl.length(new_target - self.paw.pos) > self.step * 3 / 4 then
+        args.half_step = true
+    end
+    if not args.stay and mgl.length(new_target - self.paw.pos) > self.step then
+        current_target = new_target
+        args.moved = true
+    end
+    if mgl.length(new_target - self.paw.pos) > 2 * self.step then
+        current_target = new_target
+        args.moved = true
+    end
+    if self.air_stage >= 1 then
+        local diff = mgl.vec2(rel_to_global * mgl.vec3(self.air_pos, 1)) - self.current_target.pos
+        diff = diff / mgl.length(diff)
+        current_target = self.current_target.pos + diff * args.time * 60
+    end
+
+    local multiplier = 1
+    if self.air_stage == 1 then multiplier = 0.5 end
+    if self.air_stage == 2 then multiplier = 5 end
+
+    self.fixation.pos = self.root_joint.pos
+    self.fixation:influence_recursive(nil, args.time/2 * multiplier)
+    self.current_target.pos = current_target
+    self.current_target:influence_recursive(nil, args.time/2 * multiplier)
+end
+
+function Leg:draw(args)
+    for _, patch in ipairs(self.patches) do
+        patch:draw()
+    end
+    local rel_to_global = self:get_rel_to_global()
+    local new_target = mgl.vec2(rel_to_global * mgl.vec3(self.target, 1))
+    love.graphics.circle('line', new_target.x, new_target.y, 10)
+    local current_target = mgl.vec2(mgl.vec3(self.current_target.pos, 1))
+    love.graphics.circle('line', current_target.x, current_target.y, 10)
+end
+
+function Leg:air(air_stage)
+    self.air_stage = air_stage
 end
 
 return dragon
