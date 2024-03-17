@@ -4,7 +4,6 @@ local ffi = require "ffi"
 
 local comctl32 = ffi.load('comctl32.dll')
 local dwmapi = ffi.load('dwmapi.dll')
-local uiohook = require "port.uiohook"
 
 ffi.cdef[[
 
@@ -18,6 +17,7 @@ typedef unsigned char BYTE;
 typedef unsigned long DWORD;
 typedef unsigned int UINT;
 typedef long LONG;
+typedef short SHORT;
 
 typedef intptr_t LONG_PTR;
 typedef LONG_PTR LRESULT;
@@ -144,6 +144,18 @@ HRESULT DwmEnableBlurBehindWindow(
 
 BOOL SetProcessDPIAware();
 
+BOOL GetCursorPos(
+  LPPOINT lpPoint
+);
+
+SHORT GetAsyncKeyState(
+  int vKey
+);
+
+int GetSystemMetrics(
+  int nIndex
+);
+
 ]]
 
 -- use DwmEnableBlurBehindWindow which works on modern windows
@@ -246,38 +258,24 @@ windows.display_pos_y = 0
 windows.display_width = 0
 windows.display_height = 0
 
-function windows.init_display_pos(display_index)
-    local count = ffi.new('unsigned char[1]')
-    local monitors = uiohook.hook_create_screen_info(count)
-    if display_index-1 >= count[0] then
-        print("cannot get display pos")
-        return
-    end
-    local monitor_i = -1
-    for i=0, count[0] do
-        if monitors[i].number == display_index then
-            monitor_i = i
-            break
-        end
-    end
-    if monitor_i == -1 then
-        print("cannot get display pos, no corresponding monitor")
-        return
-    end
-    windows.display_pos_x = tonumber(monitors[monitor_i].x)
-    windows.display_pos_y = tonumber(monitors[monitor_i].y)
-    windows.display_width = tonumber(monitors[monitor_i].width)
-    windows.display_height = tonumber(monitors[monitor_i].height)
-    print("found monitor",
-        windows.display_pos_x, windows.display_pos_y, 
-        windows.display_width, windows.display_height)
+function windows.init_display_pos(hwnd, display_index)
+    local rect = ffi.new("RECT[1]")
+    local status = ffi.C.GetWindowRect(hwnd, rect)
+    if status == 0 then print("init display pos get window rect error") end
+    windows.display_pos_x = tonumber(rect[0].left)
+    windows.display_pos_y = tonumber(rect[0].top)
+    windows.display_width, windows.display_height = love.window.getDesktopDimensions(display_index)
 end
 
-windows.mouse_x = 0
-windows.mouse_y = 0
+-- because window is transparent, mouse events can't be captured by love
+-- we capture mouse state with windows api
+-- and call relevant handlers in try_mouse_event
 function windows.get_mouse_pos()
-    local x = windows.mouse_x - windows.display_pos_x
-    local y = windows.mouse_y - windows.display_pos_y
+    local point = ffi.new("POINT[1]")
+    local status = ffi.C.GetCursorPos(point)
+    if status == 0 then print("get cursor pos error") end
+    local x = point[0].x - windows.display_pos_x
+    local y = point[0].y - windows.display_pos_y
     if x < 0 then x = 0 end
     if x >= windows.display_width then x = windows.display_width end
     if y < 0 then y = 0 end
@@ -285,19 +283,31 @@ function windows.get_mouse_pos()
     return x, y
 end
 
-function windows.uiohook_dispatch_proc(event)
-    if event.type == 'EVENT_MOUSE_MOVED'
-    or event.type == 'EVENT_MOUSE_DRAGGED' then
-        windows.mouse_x = event.data.mouse.x
-        windows.mouse_y = event.data.mouse.y
-        print(event)
+windows.mouse_last_x = 0
+windows.mouse_last_y = 0
+windows.mouse_last_down = false
+
+function windows.try_mouse_event(pressed, released, moved)
+    local x, y = windows.get_mouse_pos()
+    if x ~= windows.mouse_last_x or y ~= windows.mouse_last_y then
+        moved(x, y)
     end
-end
-
-windows.uiohook_dispatch_proc_cb = ffi.cast("dispatcher_t", windows.uiohook_dispatch_proc)
-
-function windows.init_mouse_hook()
-    uiohook.hook_set_dispatch_proc()
+    windows.mouse_last_x = x
+    windows.mouse_last_y = y
+    if bit.band(ffi.C.GetAsyncKeyState(0x01), 0x8000) ~= 0 then
+        -- VK_LBUTTON
+        if not windows.mouse_last_down then
+            moved(x, y)
+            pressed(x, y, 1)
+        end
+        windows.mouse_last_down = true
+    else
+        if windows.mouse_last_down then
+            moved(x, y)
+            released(x, y, 1)
+        end
+        windows.mouse_last_down = false
+    end
 end
 
 function windows.get_hwnd()
@@ -317,6 +327,7 @@ function windows.init(display_index)
           highdpi = true, usedpiscale = false }
     )
     local hwnd = windows.get_hwnd()
+    windows.hwnd = hwnd
     local status, err = windows.set_transparent(hwnd)
     print("hWnd:", hwnd)
     windows.set_bottom(hwnd)
@@ -332,12 +343,12 @@ function windows.init(display_index)
         print("error hiding taskbar", err)
     end
 
-    windows.init_display_pos(display_index)
-    uiohook.hook_set_dispatch_proc(windows.uiohook_dispatch_proc_cb)
-    local status = uiohook.hook_run()
-    if status ~= 0 then
-        print("error registering mouse hook")
-    end
+    -- hasFocus, etc are used in cimgui-love to detect if mouse is in focus
+    -- we override it because the windows is set to transparent
+    -- and mouse events can't arrive by normal means
+    love.window.hasFocus = function () return true end
+    love.window.hasMouseFocus = function () return true end
+    windows.init_display_pos(hwnd, display_index)
 
     love.graphics.setBackgroundColor(0, 0, 0, 0)
 end

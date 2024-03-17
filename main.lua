@@ -65,23 +65,25 @@ local clock = 0
 local target
 love.draw = function()
     -- example window
-    local status
-    status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
-    if status then
-        left_wing:spread(wing[0])
-        right_wing:spread(wing[0])
-    end
-    status = imgui.SliderInt("air", air, 0, 2)
-    if status then
-        for _, leg in ipairs(legs) do
-            leg:air(air[0])
+    if imgui.Begin("Debug", nil, 0) then
+        local status
+        status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
+        if status then
+            left_wing:spread(wing[0])
+            right_wing:spread(wing[0])
         end
+        status = imgui.SliderInt("air", air, 0, 2)
+        if status then
+            for _, leg in ipairs(legs) do
+                leg:air(air[0])
+            end
+        end
+        imgui.Text("leg: %d", ffi.cast('int', leg_step))
+        imgui.Text("state: " .. state)
+        imgui.Text("speed: " .. speed)
+        imgui.Checkbox("Show target", show_target);
     end
-    imgui.Text("leg: %d", ffi.cast('int', leg_step))
-    imgui.Text("state: " .. state)
-    imgui.Text("speed: " .. speed)
-    imgui.Checkbox("Show target", show_target);
-    
+    imgui.End()
     -- code to render imgui
     imgui.Render()
     imgui.love.RenderDrawLists()
@@ -104,6 +106,7 @@ local takeoff_distance = 500
 local landing_distance = 200
 
 love.update = function(dt)
+    port.try_mouse_event(love.mousepressed, love.mousereleased, love.mousemoved)
     clock = clock + dt
     imgui.love.Update(dt)
     imgui.NewFrame()
@@ -257,11 +260,7 @@ end
 love.mousepressed = function(x, y, button, ...)
     imgui.love.MousePressed(button)
     if not imgui.love.GetWantCaptureMouse() then
-        -- your code here 
-        left_wing.joints.paw.pos = mgl.vec2(x, y)
-        for name, joint in pairs(left_wing.joints) do
-            print(name, inspect(joint, {depth = 2}))
-        end
+        -- your code here
     end
 end
 
