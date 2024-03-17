@@ -24,6 +24,8 @@ local mouse_joint = skeleton.Joint:new(mgl.vec2(50, 200))
 
 local dragon = require "dragon"
 
+local port = require "port"
+
 local body = dragon.Body:new()
 body:build(mouse_joint, 22, mgl.vec2(60, 200), mgl.vec2(10, 0))
 body.draw = draw_modifier.color({.7, .7, .7}, body.draw)
@@ -42,6 +44,7 @@ legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(30, -30), mgl.vec2(12, 
 legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 17), mgl.vec2(12, 17), -70, 1.5)
 
 love.load = function()
+    port.init(1)
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
 local wing = ffi.new("float[1]")
@@ -93,6 +96,7 @@ love.draw = function()
     if show_target[0] then
         love.graphics.circle("line", target.x, target.y, 10)
     end
+    love.timer.sleep(1/100)
 end
 
 local takeoff_delay = 1
@@ -108,7 +112,7 @@ love.update = function(dt)
         target = body.target_joint.pos
     end
 
-    local mouse_pos = mgl.vec2(love.mouse.getPosition())
+    local mouse_pos = mgl.vec2(port.get_mouse_pos())
 
     target = body.head.pos
     -- random offset mouse_pos
@@ -298,34 +302,4 @@ end
 
 love.quit = function()
     return imgui.love.Shutdown()
-end
-
--- for gamepad support also add the following:
-
-love.joystickadded = function(joystick)
-    imgui.love.JoystickAdded(joystick)
-    -- your code here 
-end
-
-love.joystickremoved = function(joystick)
-    imgui.love.JoystickRemoved()
-    -- your code here 
-end
-
-love.gamepadpressed = function(joystick, button)
-    imgui.love.GamepadPressed(button)
-    -- your code here 
-end
-
-love.gamepadreleased = function(joystick, button)
-    imgui.love.GamepadReleased(button)
-    -- your code here 
-end
-
--- choose threshold for considering analog controllers active, defaults to 0 if unspecified
-local threshold = 0.2 
-
-love.gamepadaxis = function(joystick, axis, value)
-    imgui.love.GamepadAxis(axis, value, threshold)
-    -- your code here 
 end
