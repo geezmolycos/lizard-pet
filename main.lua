@@ -44,16 +44,17 @@ legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 1
 love.load = function()
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
-local x = ffi.new("float[1]")
+local wing = ffi.new("float[1]")
 local air = ffi.new("int[1]")
+local show_target = ffi.new("bool[1]", {false})
 local state = 'landed'
 local speed = 1
 local fly_freq = 1.8
 -- landed, takeoff, flying, landing
 
-x[0] = 0.2
-left_wing:spread(x[0])
-right_wing:spread(x[0])
+wing[0] = 0.2
+left_wing:spread(wing[0])
+right_wing:spread(wing[0])
 air[0] = 0
 local leg_step = 0
 local leg_step_count = 0
@@ -62,10 +63,10 @@ local target
 love.draw = function()
     -- example window
     local status
-    status = imgui.SliderFloat("wing", x, 0.0, 1.0)
+    status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
     if status then
-        left_wing:spread(x[0])
-        right_wing:spread(x[0])
+        left_wing:spread(wing[0])
+        right_wing:spread(wing[0])
     end
     status = imgui.SliderInt("air", air, 0, 2)
     if status then
@@ -76,6 +77,7 @@ love.draw = function()
     imgui.Text("leg: %d", ffi.cast('int', leg_step))
     imgui.Text("state: " .. state)
     imgui.Text("speed: " .. speed)
+    imgui.Checkbox("Show target", show_target);
     
     -- code to render imgui
     imgui.Render()
@@ -87,8 +89,10 @@ love.draw = function()
     left_wing:draw()
     right_wing:draw()
     body:draw()
-    love.graphics.circle("line", target.x, target.y, 10)
     love.graphics.pop('all')
+    if show_target[0] then
+        love.graphics.circle("line", target.x, target.y, 10)
+    end
 end
 
 local takeoff_delay = 1
@@ -100,22 +104,41 @@ love.update = function(dt)
     imgui.love.Update(dt)
     imgui.NewFrame()
 
-    target = mgl.vec2(love.mouse.getPosition())
-    target.x = target.x + 100 * perlin:noise(clock, 123.8975, 456.0231)
-    target.y = target.y + 100 * perlin:noise(clock, 986.423, 461.511)
+    if target == nil then
+        target = body.target_joint.pos
+    end
+
+    local mouse_pos = mgl.vec2(love.mouse.getPosition())
+
+    target = body.head.pos
+    -- random offset mouse_pos
+    mouse_pos.x = mouse_pos.x + 100 * perlin:noise(clock, 123.8975, 456.0231)
+    mouse_pos.y = mouse_pos.y + 100 * perlin:noise(clock, 986.423, 461.511)
+    -- move target to mouse
+    local target_move_vec = mouse_pos - target
+    -- if mgl.length(target_move_vec) > dt * 200 then
+    --     target_move_vec = mgl.normalize(target_move_vec) * dt * 200
+    -- end
+    target_move_vec.x = target_move_vec.x + mgl.length(target_move_vec) * 0.7 * perlin:noise(clock, 64.56, 379.615)
+    target_move_vec.y = target_move_vec.y + mgl.length(target_move_vec) * 0.7 * perlin:noise(clock, 65.64, 311.156)
+    target = target + target_move_vec
+
+
     if state == 'landed' then
-        local target = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
-        target = target * 0.2 + 0.1
-        local diff = target - x[0]
+        local target_wing_spread = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
+        target_wing_spread = target_wing_spread * 0.2 + 0.1
+        local diff = target_wing_spread - wing[0]
         if math.abs(diff) > dt / 1 then
             diff = diff / math.abs(diff) * dt/1
         end
-        x[0] = x[0] + diff
-        left_wing:spread(x[0])
-        right_wing:spread(x[0])
+        wing[0] = wing[0] + diff
+        left_wing:spread(wing[0])
+        right_wing:spread(wing[0])
+        left_wing:flap(0.5)
+        right_wing:flap(0.5)
         speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
     end
-    if state == 'landed' and mgl.length(target - body.joints[1].pos) > takeoff_distance then
+    if state == 'landed' and mgl.length(mouse_pos - body.joints[1].pos) > takeoff_distance then
         state = 'takeoff'
         takeoff_delay = 1
         air[0] = 1
@@ -126,12 +149,12 @@ love.update = function(dt)
     if state == 'takeoff' then
         local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target = target * 0.3 + 0.4
-        local diff = target - x[0]
+        local diff = target - wing[0]
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        x[0] = x[0] + diff
-        if math.abs(target - x[0]) < 0.02 then
+        wing[0] = wing[0] + diff
+        if math.abs(target - wing[0]) < 0.02 then
             takeoff_delay = takeoff_delay - dt
             if takeoff_delay <= 0 then
                 state = 'flying'
@@ -141,23 +164,23 @@ love.update = function(dt)
                 end
             end
         end
-        left_wing:spread(x[0])
-        right_wing:spread(x[0])
-        left_wing:flap(x[0])
-        right_wing:flap(x[0])
+        left_wing:spread(wing[0])
+        right_wing:spread(wing[0])
+        left_wing:flap(wing[0])
+        right_wing:flap(wing[0])
     end
     if state == 'flying' then
         local wing_speed_target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         wing_speed_target = wing_speed_target * 0.3 + 0.4
-        local diff = wing_speed_target - x[0]
+        local diff = wing_speed_target - wing[0]
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        x[0] = x[0] + diff
-        left_wing:spread(x[0])
-        right_wing:spread(x[0])
-        left_wing:flap(x[0])
-        right_wing:flap(x[0])
+        wing[0] = wing[0] + diff
+        left_wing:spread(wing[0])
+        right_wing:spread(wing[0])
+        left_wing:flap(wing[0])
+        right_wing:flap(wing[0])
         local target_speed = -math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target_speed = target_speed * 0.3 + 0.4
         local speed_diff = target_speed - speed

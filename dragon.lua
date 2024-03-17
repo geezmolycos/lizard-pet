@@ -54,8 +54,8 @@ function Body:build(target_joint, length, head_pos, delta_pos)
         self.joints[i]:add_constraint(c)
     end
     self.patches = {}
-    local size = {4,9,6,7, 7,7,7,7, 9,7,6,4, 3,2,2,2, 2,2,1,1, 1,0}
-    for i = 1, #self.joints-1 do
+    local size = {0,4,9,6, 7,7,7,7, 9,7,6,4, 3,2,2,2, 2,2,1,1, 1,0}
+    for i = 2, #self.joints-1 do
         local patch = skin.CircleSeries:new(self.joints[i], self.joints[i+1])
         patch:set_from_to('fill', 4, size[i], size[i+1])
         table.insert(self.patches, patch)
