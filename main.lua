@@ -2,14 +2,15 @@
 if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
     require("lldebugger").start()
 end
--- Make sure the shared library can be found through package.cpath before loading the module.
--- For example, if you put it in the LÖVE save directory, you could do something like this:
-local lua_path = love.filesystem.getSource() .. "/lua"
+
+love.filesystem.setRequirePath(love.filesystem.getRequirePath() .. ';lua/?.lua;lua/?/init.lua')
+
 local lib_path = love.filesystem.getSource() .. "/lib"
+if love.filesystem.isFused() then
+    lib_path = love.filesystem.getSourceBaseDirectory() .. "/lib"
+end
 local extension = jit.os == "Windows" and "dll" or jit.os == "Linux" and "so" or jit.os == "OSX" and "dylib"
 
-package.path = string.format("%s;%s/?/init.lua", package.path, lua_path)
-package.path = string.format("%s;%s/?.%s", package.path, lua_path, "lua")
 package.cpath = string.format("%s;%s/?.%s", package.cpath, lib_path, extension)
 
 local ffi = require "ffi"
@@ -47,7 +48,9 @@ love.load = function()
     port.init(1)
     imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
 end
+local debug_window_show = ffi.new("bool[1]")
 local wing = ffi.new("float[1]")
+local shadow_height = ffi.new("float[1]")
 local air = ffi.new("int[1]")
 local show_target = ffi.new("bool[1]", {false})
 local state = 'landed'
@@ -64,30 +67,50 @@ local leg_step_count = 0
 local clock = 0
 local target
 love.draw = function()
-    -- example window
-    if imgui.Begin("Debug", nil, 0) then
-        local status
-        status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
-        if status then
-            left_wing:spread(wing[0])
-            right_wing:spread(wing[0])
+    imgui.SetNextWindowPos(imgui.ImVec2_Float(love.graphics.getWidth() - 150, 100))
+    if imgui.Begin("Debug checkbox", nil, imgui.love.WindowFlags("NoTitleBar", "NoResize", "NoMove", "NoScrollbar", "NoSavedSettings")) then
+        if imgui.Button("Close") then
+            love.quit()
         end
-        status = imgui.SliderInt("air", air, 0, 2)
-        if status then
-            for _, leg in ipairs(legs) do
-                leg:air(air[0])
-            end
-        end
-        imgui.Text("leg: %d", ffi.cast('int', leg_step))
-        imgui.Text("state: " .. state)
-        imgui.Text("speed: " .. speed)
-        imgui.Checkbox("Show target", show_target);
+        imgui.Checkbox("Show debug", debug_window_show)
     end
     imgui.End()
+    if debug_window_show[0] then
+        if imgui.Begin("Debug", nil, 0) then
+            local status
+            status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
+            status = imgui.SliderFloat("shadow", shadow_height, 0.0, 1.0)
+            if status then
+                left_wing:spread(wing[0])
+                right_wing:spread(wing[0])
+            end
+            status = imgui.SliderInt("air", air, 0, 2)
+            if status then
+                for _, leg in ipairs(legs) do
+                    leg:air(air[0])
+                end
+            end
+            imgui.Text("leg: %d", ffi.cast('int', leg_step))
+            imgui.Text("state: " .. state)
+            imgui.Text("speed: " .. speed)
+            imgui.Checkbox("Show target", show_target);
+        end
+        imgui.End()
+    end
     -- code to render imgui
     imgui.Render()
     imgui.love.RenderDrawLists()
+
+    -- draw dragon
     love.graphics.push('all')
+    -- draw shadow
+    local body_center = body.joints[9].pos
+    local max_radius = 80
+    local current_radius = max_radius * (1.2 - shadow_height[0])
+    love.graphics.setColor(0, 0, 0, 0.1)
+    love.graphics.circle('fill', body_center.x, body_center.y, current_radius * 0.6)
+    love.graphics.circle('fill', body_center.x, body_center.y, current_radius * 0.8)
+    love.graphics.circle('fill', body_center.x, body_center.y, current_radius)
     for _, leg in ipairs(legs) do
         leg:draw()
     end
@@ -130,7 +153,6 @@ love.update = function(dt)
     target_move_vec.y = target_move_vec.y + mgl.length(target_move_vec) * 0.7 * perlin:noise(clock, 65.64, 311.156)
     target = target + target_move_vec
 
-
     if state == 'landed' then
         local target_wing_spread = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
         target_wing_spread = target_wing_spread * 0.2 + 0.1
@@ -139,6 +161,7 @@ love.update = function(dt)
             diff = diff / math.abs(diff) * dt/1
         end
         wing[0] = wing[0] + diff
+        shadow_height[0] = wing[0]
         left_wing:spread(wing[0])
         right_wing:spread(wing[0])
         left_wing:flap(0.5)
@@ -161,6 +184,7 @@ love.update = function(dt)
             diff = diff / math.abs(diff) * dt/0.5
         end
         wing[0] = wing[0] + diff
+        shadow_height[0] = wing[0]
         if math.abs(target - wing[0]) < 0.02 then
             takeoff_delay = takeoff_delay - dt
             if takeoff_delay <= 0 then
@@ -184,6 +208,7 @@ love.update = function(dt)
             diff = diff / math.abs(diff) * dt/0.5
         end
         wing[0] = wing[0] + diff
+        shadow_height[0] = wing[0]
         left_wing:spread(wing[0])
         right_wing:spread(wing[0])
         left_wing:flap(wing[0])

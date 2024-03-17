@@ -315,9 +315,7 @@ function windows.get_hwnd()
 end
 
 function windows.init(display_index)
-    if not ffi.C.SetProcessDPIAware() then
-        print("set dpi awareness failed")
-    end
+
     windows.hittest = function () return 'client' end
     local display_width, display_height = love.window.getDesktopDimensions(display_index)
     love.window.setMode(
