@@ -194,6 +194,8 @@ function Wing:build(main_attach, main_front, hind_attach, hind_front, hind_back,
         end
     end
     self:spread(1)
+    self.membrane_color = {.3, .3, .3}
+    self.limb_color = {.7, .7, .7}
 end
 
 function Wing:spread(strength)
@@ -263,7 +265,7 @@ end
 
 function Wing:draw(args)
     -- draw wing membranes
-    draw_modifier.color({.3, .3, .3}, function ()
+    draw_modifier.color(self.membrane_color, function ()
         -- main membrane
         self:draw_membrane_triangle(self.joints.finger4.pos, self.joints.elbow.pos, self.joints.paw.pos)
         self:draw_membrane_triangle(self.joints.elbow.pos, self.joints.hind_root.pos, self.joints.main_root.pos)
@@ -278,7 +280,7 @@ function Wing:draw(args)
         self:draw_membrane(self.joints.finger2.pos, self.joints.finger3.pos, self.joints.paw.pos, 0.3)
         self:draw_membrane(self.joints.finger3.pos, self.joints.finger4.pos, self.joints.paw.pos, 0.3)
     end)()
-    draw_modifier.color({.7, .7, .7}, function ()
+    draw_modifier.color(self.limb_color, function ()
         love.graphics.circle('fill', self.joints.main_root.pos.x * 0.8 + self.joints.elbow.pos.x * 0.2, self.joints.main_root.pos.y * 0.8 + self.joints.elbow.pos.y * 0.2, 5)
         love.graphics.circle('fill', self.joints.main_root.pos.x * 0.7 + self.joints.elbow.pos.x * 0.3, self.joints.main_root.pos.y * 0.7 + self.joints.elbow.pos.y * 0.3, 4)
         love.graphics.circle('fill', self.joints.paw.pos.x * 0.9 + self.joints.elbow.pos.x * 0.1, self.joints.paw.pos.y * 0.9 + self.joints.elbow.pos.y * 0.1, 3)
@@ -317,6 +319,8 @@ function Leg:build(root_joint, front_joint, target, elbow_pos, air_pos, paw_angl
         patch:set_from_to('fill', 8, size[i], size[i+1])
         table.insert(self.patches, patch)
     end
+    self.limb_color = {.5, .5, .5}
+    self.paw_color = {.3, .3, .3}
 end
 
 function Leg:destroy()
@@ -415,12 +419,12 @@ function Leg:draw(args)
     local paw_vector = paw_abs_direction * self.paw_length
     local paw_normal = mgl.vec2(mgl.rotate(90) * mgl.vec3(paw_vector, 1))
     local paw_pos = self.paw.pos + paw_vector
-    love.graphics.setColor(.2, .2, .2)
+    love.graphics.setColor(self.paw_color)
     love.graphics.setLineWidth(14)
     love.graphics.line(self.paw.pos.x, self.paw.pos.y, paw_pos.x, paw_pos.y)
     love.graphics.circle('fill', paw_pos.x, paw_pos.y, 7)
     love.graphics.circle('fill', self.paw.pos.x, self.paw.pos.y, 7)
-    draw_modifier.color({.5, .5, .5}, function ()
+    draw_modifier.color(self.limb_color, function ()
         for _, patch in ipairs(self.patches) do
             patch:draw()
         end
@@ -435,6 +439,188 @@ end
 
 function Leg:air(air_stage)
     self.air_stage = air_stage
+end
+
+local Dragon = setmetatable({}, {__index = part.Part})
+dragon.Dragon = Dragon
+
+function Dragon:build(mouse_joint)
+    mouse_joint = skeleton.Joint:new(mgl.vec2(50, 200))
+    self.mouse_joint = mouse_joint
+    local body = dragon.Body:new()
+    self.body = body
+    body:build(mouse_joint, 22, mgl.vec2(60, 200), mgl.vec2(10, 0))
+        
+    self.left_wing = dragon.Wing:new()
+    self.left_wing:build(body.joints[6], body.joints[5], body.joints[10], body.joints[5], body.joints[13], mgl.rotate(math.pi/2))
+
+    self.right_wing = dragon.Wing:new()
+    self.right_wing:build(body.joints[6], body.joints[5], body.joints[10], body.joints[5], body.joints[13], mgl.rotate(-math.pi/2) * mgl.scale(mgl.vec2(1, -1)))
+    
+    local legs = {dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:new(), dragon.Leg:new()}
+    self.legs = legs
+    
+    legs[1]:build(body.joints[6], body.joints[5], mgl.vec2(20, 20), mgl.vec2(8, 16), mgl.vec2(8, 16), -70, 1)
+    legs[2]:build(body.joints[6], body.joints[5], mgl.vec2(20, -20), mgl.vec2(8, -16), mgl.vec2(8, -16), 70, 1)
+    legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(30, -30), mgl.vec2(12, -17), mgl.vec2(12, -17), 70, 1.5)
+    legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 17), mgl.vec2(12, 17), -70, 1.5)
+
+    self.state = 'landed' -- landed, takeoff, flying, landing
+    self.wing_spread = 0.2
+    self:update_wing_spread(self.wing_spread)
+    self.leg_in_air = 0
+    self.speed = 1
+    self.fly_freq = 1.8
+
+    self.leg_step = 0
+    self.leg_step_count = 0
+
+    self.takeoff_delay = 1
+    self.takeoff_distance = 500
+    self.landing_distance = 200
+
+    self.body_color = {.7, .7, .7}
+end
+
+function Dragon:update_wing_spread(wing_spread)
+    self.wing_spread = wing_spread
+    self.left_wing:spread(wing_spread)
+    self.right_wing:spread(wing_spread)
+end
+
+function Dragon:update(args)
+    local state = self.state
+    local target = args.target
+    local dt = args.dt
+    local clock = args.clock
+    if state == 'landed' then
+        local target_wing_spread = perlin:noise(args.clock, 4564.453, 4635.312) / 2 + 0.5
+        target_wing_spread = target_wing_spread * 0.2 + 0.1
+        local diff = target_wing_spread - self.wing_spread
+        if math.abs(diff) > dt / 1 then
+            diff = diff / math.abs(diff) * dt/1
+        end
+        self.wing_spread = self.wing_spread + diff
+        self.left_wing:spread(self.wing_spread)
+        self.right_wing:spread(self.wing_spread)
+        self.left_wing:flap(0.5)
+        self.right_wing:flap(0.5)
+        self.speed = 0.1 + (perlin:noise(args.clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
+    end
+    if state == 'landed' and mgl.length(target - self.body.joints[1].pos) > self.takeoff_distance then
+        state = 'takeoff'
+        self.takeoff_delay = 1
+        self.leg_in_air = 1
+        for i, leg in ipairs(self.legs) do
+            leg:air(1)
+        end
+    end
+    if state == 'takeoff' then
+        local target_wing_spread = math.sin(args.clock * self.fly_freq * math.pi) / 2 + 0.5
+        target_wing_spread = target_wing_spread * 0.3 + 0.4
+        local diff = target_wing_spread - self.wing_spread
+        if math.abs(diff) > dt / 0.5 then
+            diff = diff / math.abs(diff) * dt/0.5
+        end
+        self.wing_spread = self.wing_spread + diff
+        if math.abs(target_wing_spread - self.wing_spread) < 0.02 then
+            self.takeoff_delay = self.takeoff_delay - dt
+            if self.takeoff_delay <= 0 then
+                state = 'flying'
+                self.leg_in_air = 2
+                for i, leg in ipairs(self.legs) do
+                    leg:air(2)
+                end
+            end
+        end
+        self.left_wing:spread(self.wing_spread)
+        self.right_wing:spread(self.wing_spread)
+        self.left_wing:flap(self.wing_spread)
+        self.right_wing:flap(self.wing_spread)
+    end
+    if state == 'flying' then
+        local wing_speed_target = math.sin(args.clock * self.fly_freq * math.pi) / 2 + 0.5
+        wing_speed_target = wing_speed_target * 0.3 + 0.4
+        local diff = wing_speed_target - self.wing_spread
+        if math.abs(diff) > dt / 0.5 then
+            diff = diff / math.abs(diff) * dt/0.5
+        end
+        self.wing_spread = self.wing_spread + diff
+        self.left_wing:spread(self.wing_spread)
+        self.right_wing:spread(self.wing_spread)
+        self.left_wing:flap(self.wing_spread)
+        self.right_wing:flap(self.wing_spread)
+        local target_speed = -math.sin(args.clock * self.fly_freq * math.pi) / 2 + 0.5
+        target_speed = target_speed * 0.3 + 0.4
+        local speed_diff = target_speed - self.speed
+        if math.abs(speed_diff) > dt / 0.5 then
+            speed_diff = speed_diff / math.abs(speed_diff) * dt/0.5
+        end
+        self.speed = self.speed + speed_diff
+    end
+    if state == 'flying' and mgl.length(target - self.body.joints[1].pos) < self.landing_distance then
+        state = 'landing'
+        self.leg_in_air = 0
+        for i, leg in ipairs(self.legs) do
+            leg:air(0)
+        end
+    end
+    if state == 'landing' then
+        local target_speed = 0.1 + (perlin:noise(args.clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
+        local speed_diff = target_speed - self.speed
+        if math.abs(speed_diff) > dt / 2 then
+            speed_diff = speed_diff / math.abs(speed_diff) * dt/2
+        end
+        self.speed = self.speed + speed_diff
+        if math.abs(target_speed - self.speed) < 0.02 then
+            state = 'landed'
+        end
+    end
+    local next_leg_step = leg_step
+    for i, leg in ipairs(self.legs) do
+        local args = {
+            time = dt,
+            mouse_pos = target,
+        }
+        if leg_step == i % 2 then
+            args.stay = true
+        end
+        leg:update(args)
+        if args.half_step then
+            next_leg_step = 1 - (i % 2)
+            self.leg_step_count = self.leg_step_count + 1
+        end
+    end
+    if self.leg_step_count > 0 then
+        leg_step = next_leg_step
+        self.leg_step_count = 0
+    end
+    self.state = state
+    self.body:update({
+        time = dt,
+        mouse_pos = target,
+        speed = self.speed
+    })
+    self.left_wing:update({
+        time = dt,
+        mouse_pos = target,
+        speed = (state == 'flying' or state == 'takeoff') and 10 or 1
+    })
+    self.right_wing:update({
+        time = dt,
+        mouse_pos = target,
+        speed = (state == 'flying' or state == 'takeoff') and 10 or 1
+    })
+end
+
+function Dragon:draw()
+    for _, leg in ipairs(self.legs) do
+        leg:draw()
+    end
+    self.left_wing:draw()
+    self.right_wing:draw()
+    love.graphics.setColor(self.body_color)
+    self.body:draw()
 end
 
 return dragon
