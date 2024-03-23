@@ -13,6 +13,10 @@ local extension = jit.os == "Windows" and "dll" or jit.os == "Linux" and "so" or
 
 package.cpath = string.format("%s;%s/?.%s", package.cpath, lib_path, extension)
 
+local log = require "log"
+
+log.fatal(1, 1, {1,2,3}, "test")
+
 local ffi = require "ffi"
 local inspect = require "inspect"
 local imgui = require "cimgui"
