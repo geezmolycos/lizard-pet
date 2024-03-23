@@ -10,7 +10,10 @@ log.remove_file()
 
 log.warn("Lizard pet: Hello from main.lua")
 
-local inspect = require "inspect"
+local user_config = require "user_config"
+user_config.load_from_file()
+user_config.set_default("test", 1)
+
 local mgl = require "MGL"
 local Slab = require "Slab"
 local skeleton = require "skeleton"
@@ -41,7 +44,8 @@ legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(30, -30), mgl.vec2(12, 
 legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 17), mgl.vec2(12, 17), -70, 1.5)
 
 love.load = function(args)
-    port.init(1)
+    port.init(2)
+    port.set_top(port.hwnd)
     Slab.Initialize(args)
 end
 local debug_window_show = false
@@ -54,16 +58,15 @@ local speed = 1
 local fly_freq = 1.8
 -- landed, takeoff, flying, landing
 
-wind_spread = 0.2
-left_wing:spread(wind_spread)
-right_wing:spread(wind_spread)
+wing_spread = 0.2
+left_wing:spread(wing_spread)
+right_wing:spread(wing_spread)
 leg_in_air = 0
 local leg_step = 0
 local leg_step_count = 0
 local clock = 0
 local target
-love.draw = function()
-
+function love.draw()
     -- draw dragon
     love.graphics.push('all')
     -- draw shadow
@@ -84,6 +87,9 @@ love.draw = function()
     if show_target then
         love.graphics.circle("line", target.x, target.y, 10)
     end
+
+    Slab.Draw()
+
     love.timer.sleep(1/100)
 end
 
@@ -92,9 +98,13 @@ local takeoff_distance = 500
 local landing_distance = 200
 
 love.update = function(dt)
-    port.try_mouse_event(love.mousepressed, love.mousereleased, love.mousemoved)
+    port.try_mouse_event(love.handlers['mousepressed'], love.handlers['mousereleased'], love.handlers['mousemoved'])
     clock = clock + dt
     Slab.Update(dt)
+
+    Slab.BeginWindow('MyFirstWindow', {Title = "My First Window"})
+	Slab.Text("Hello World")
+	Slab.EndWindow()
 
     if target == nil then
         target = body.target_joint.pos
@@ -118,14 +128,14 @@ love.update = function(dt)
     if state == 'landed' then
         local target_wing_spread = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
         target_wing_spread = target_wing_spread * 0.2 + 0.1
-        local diff = target_wing_spread - wind_spread
+        local diff = target_wing_spread - wing_spread
         if math.abs(diff) > dt / 1 then
             diff = diff / math.abs(diff) * dt/1
         end
-        wind_spread = wind_spread + diff
-        shadow_height = wind_spread
-        left_wing:spread(wind_spread)
-        right_wing:spread(wind_spread)
+        wing_spread = wing_spread + diff
+        shadow_height = wing_spread
+        left_wing:spread(wing_spread)
+        right_wing:spread(wing_spread)
         left_wing:flap(0.5)
         right_wing:flap(0.5)
         speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
@@ -141,13 +151,13 @@ love.update = function(dt)
     if state == 'takeoff' then
         local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target = target * 0.3 + 0.4
-        local diff = target - wind_spread
+        local diff = target - wing_spread
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        wind_spread = wind_spread + diff
-        shadow_height = wind_spread
-        if math.abs(target - wind_spread) < 0.02 then
+        wing_spread = wing_spread + diff
+        shadow_height = wing_spread
+        if math.abs(target - wing_spread) < 0.02 then
             takeoff_delay = takeoff_delay - dt
             if takeoff_delay <= 0 then
                 state = 'flying'
@@ -157,24 +167,24 @@ love.update = function(dt)
                 end
             end
         end
-        left_wing:spread(wind_spread)
-        right_wing:spread(wind_spread)
-        left_wing:flap(wind_spread)
-        right_wing:flap(wind_spread)
+        left_wing:spread(wing_spread)
+        right_wing:spread(wing_spread)
+        left_wing:flap(wing_spread)
+        right_wing:flap(wing_spread)
     end
     if state == 'flying' then
         local wing_speed_target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         wing_speed_target = wing_speed_target * 0.3 + 0.4
-        local diff = wing_speed_target - wind_spread
+        local diff = wing_speed_target - wing_spread
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        wind_spread = wind_spread + diff
-        shadow_height = wind_spread
-        left_wing:spread(wind_spread)
-        right_wing:spread(wind_spread)
-        left_wing:flap(wind_spread)
-        right_wing:flap(wind_spread)
+        wing_spread = wing_spread + diff
+        shadow_height = wing_spread
+        left_wing:spread(wing_spread)
+        right_wing:spread(wing_spread)
+        left_wing:flap(wing_spread)
+        right_wing:flap(wing_spread)
         local target_speed = -math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target_speed = target_speed * 0.3 + 0.4
         local speed_diff = target_speed - speed
@@ -244,4 +254,11 @@ love.mousepressed = function(x, y, button, ...)
 end
 
 love.mousereleased = function(x, y, button, ...)
+end
+
+love.quit = function()
+    log.info("Quiting initialized")
+    log.info("saving config")
+    user_config.save_to_file()
+    log.warn("Quitting...")
 end

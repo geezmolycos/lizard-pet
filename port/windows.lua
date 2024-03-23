@@ -285,29 +285,60 @@ end
 
 windows.mouse_last_x = 0
 windows.mouse_last_y = 0
-windows.mouse_last_down = false
+windows.mouse_left_button_last_down = false
+windows.mouse_right_button_last_down = false
 
 function windows.try_mouse_event(pressed, released, moved)
     local x, y = windows.get_mouse_pos()
+    local dx = x - windows.mouse_last_x
+    local dy = y - windows.mouse_last_y
     if x ~= windows.mouse_last_x or y ~= windows.mouse_last_y then
-        moved(x, y)
+        moved(x, y, dx, dy, false)
     end
     windows.mouse_last_x = x
     windows.mouse_last_y = y
     if bit.band(ffi.C.GetAsyncKeyState(0x01), 0x8000) ~= 0 then
         -- VK_LBUTTON
-        if not windows.mouse_last_down then
-            moved(x, y)
-            pressed(x, y, 1)
+        if not windows.mouse_left_button_last_down then
+            pressed(x, y, 1, false, 1)
         end
-        windows.mouse_last_down = true
-    else
-        if windows.mouse_last_down then
-            moved(x, y)
-            released(x, y, 1)
+        windows.mouse_left_button_last_down = true
+    elseif windows.mouse_left_button_last_down then
+        if windows.mouse_left_button_last_down then
+            released(x, y, 1, false, 1)
         end
-        windows.mouse_last_down = false
+        windows.mouse_left_button_last_down = false
     end
+    if bit.band(ffi.C.GetAsyncKeyState(0x02), 0x8000) ~= 0 then
+        -- VK_RBUTTON
+        if not windows.mouse_right_button_last_down then
+            pressed(x, y, 2, false, 1)
+        end
+        windows.mouse_right_button_last_down = true
+    elseif windows.mouse_right_button_last_down then
+        if windows.mouse_right_button_last_down then
+            released(x, y, 2, false, 1)
+        end
+        windows.mouse_right_button_last_down = false
+    end
+end
+
+function windows.override_mouse_functions()
+    love.mouse.getPosition = windows.get_mouse_pos
+    love.mouse.isDown = function (...)
+        local buttons = {...}
+        for i, button in pairs(buttons) do
+            if button == 1 and windows.mouse_left_button_last_down then
+                return true
+            end
+            if button == 2 and windows.mouse_right_button_last_down then
+                return true
+            end
+        end
+        return false
+    end
+    love.window.hasFocus = function () return true end
+    love.window.hasMouseFocus = function () return true end
 end
 
 function windows.get_hwnd()
@@ -341,11 +372,7 @@ function windows.init(display_index)
         print("error hiding taskbar", err)
     end
 
-    -- hasFocus, etc are used in cimgui-love to detect if mouse is in focus
-    -- we override it because the windows is set to transparent
-    -- and mouse events can't arrive by normal means
-    love.window.hasFocus = function () return true end
-    love.window.hasMouseFocus = function () return true end
+    windows.override_mouse_functions()
     windows.init_display_pos(hwnd, display_index)
 
     love.graphics.setBackgroundColor(0, 0, 0, 0)
