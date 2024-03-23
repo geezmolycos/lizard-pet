@@ -61,16 +61,24 @@ function love.draw()
     love.timer.sleep(1/100)
 end
 
-
+local menu_visible = false
+local menu_x = 0
+local menu_y = 0
+local menu_is_hovered = false
 
 love.update = function(dt)
-    port.try_mouse_event(love.handlers['mousepressed'], love.handlers['mousereleased'], love.handlers['mousemoved'])
+    if port.should_try_mouse_event then
+        port.try_mouse_event(love.handlers['mousepressed'], love.handlers['mousereleased'], love.handlers['mousemoved'])
+    end
     clock = clock + dt
     Slab.Update(dt)
 
-    Slab.BeginWindow('MyFirstWindow', {Title = "My First Window"})
-	Slab.Text("Hello World")
-	Slab.EndWindow()
+    if menu_visible then
+        Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y})
+        Slab.Text("Hello World")
+        Slab.EndWindow()
+        menu_is_hovered = not Slab.IsVoidHovered()
+    end
 
     if target == nil then
         target = dragon_obj.body.target_joint.pos
@@ -101,14 +109,23 @@ love.mousemoved = function(x, y, ...)
 end
 
 love.mousepressed = function(x, y, button, ...)
+    -- menu show and hide
+    if button == 1 and not menu_is_hovered then
+        menu_visible = false
+    end
+    if button == 2 then
+        menu_visible = true
+        menu_x = x
+        menu_y = y
+    end
 end
 
 love.mousereleased = function(x, y, button, ...)
 end
 
 love.quit = function()
-    log.info("Quiting initialized")
+    log.info("Begin quiting")
     log.info("saving config")
     user_config.save_to_file()
-    log.warn("Quitting...")
+    log.warn("Quiting...")
 end

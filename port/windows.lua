@@ -2,6 +2,8 @@ local windows = {}
 
 local ffi = require "ffi"
 
+local log = require "log"
+
 local comctl32 = ffi.load('comctl32.dll')
 local dwmapi = ffi.load('dwmapi.dll')
 
@@ -158,25 +160,14 @@ int GetSystemMetrics(
 
 ]]
 
--- use DwmEnableBlurBehindWindow which works on modern windows
-function windows.set_transparent(hwnd)
-    local orig_style = ffi.C.GetWindowLongA(hwnd, -16)
-    local orig_exstyle = ffi.C.GetWindowLongA(hwnd, -20)
-    orig_style = bit.band(orig_style, bit.bnot(0x00cf0000)) -- WS_OVERLAPPEDWINDOW
-    orig_style = bit.bor(orig_style, 0x80000000)
-    ffi.C.SetWindowLongA(hwnd, -16, orig_style)
-    local bb = ffi.new('DWM_BLURBEHIND[1]')
-    local hRgn = ffi.C.CreateRectRgn(0, 0, -1, -1) -- create an invisible region
-    bb[0].dwFlags = 3 -- DWM_BB_ENABLE | DWM_BB_BLURREGION
-    bb[0].hRgnBlur = hRgn
-    bb[0].fEnable = true
-    local result = dwmapi.DwmEnableBlurBehindWindow(hwnd, bb);
-    if result == 0 then return true else return false, result end
+
+function windows.get_hwnd()
+    return ffi.C.GetActiveWindow()
 end
 
 function windows.subclass_window_proc(hWnd, uMsg, wParam, lParam, uIdSubclass, dwRefData)
     if uMsg == 0x0082 then -- WM_NCDESTROY
-        comctl32.RemoveWindowSubclass(hWnd, window.subclass_window_proc_cb, uIdSubclass)
+        comctl32.RemoveWindowSubclass(hWnd, windows.subclass_window_proc_cb, uIdSubclass)
     elseif uMsg == 0x0046 then -- WM_WINDOWPOSCHANGING
         local windowpos = ffi.cast("WINDOWPOS*", lParam)
         if windows.at_bottom then
@@ -194,7 +185,7 @@ function windows.subclass_window_proc(hWnd, uMsg, wParam, lParam, uIdSubclass, d
             local rect = ffi.new('RECT[1]')
             local result = ffi.C.GetWindowRect(hWnd, rect)
             if result == 0 then
-                print("error getting window rect")
+                log.error("error getting window rect")
                 return 1
             end
             x = x - rect[0].left
@@ -214,16 +205,18 @@ end
 
 windows.subclass_window_proc_cb = ffi.cast("SUBCLASSPROC", windows.subclass_window_proc)
 
-function windows.register_subclass_window_proc(hwnd)
-    windows.set_bottom(hwnd)
+function windows.register_subclass_window_proc()
+    windows.at_bottom = false
     -- https://stackoverflow.com/questions/63143237/change-wndproc-of-the-window
-    local result = comctl32.SetWindowSubclass(hwnd, windows.subclass_window_proc_cb, 1, 0)
+    local result = comctl32.SetWindowSubclass(windows.hwnd, windows.subclass_window_proc_cb, 1, 0)
     if result == 1 then return true else return false end
 end
 
-function windows.set_bottom(hwnd)
+-- z order
+
+function windows.set_bottom()
     -- set to HWND_BOTTOM
-    local result = ffi.C.SetWindowPos(hwnd, ffi.cast("HWND", 1), 0, 0, 0, 0, 0x0013) -- SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    local result = ffi.C.SetWindowPos(windows.hwnd, ffi.cast("HWND", 1), 0, 0, 0, 0, 0x0013) -- SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
     if result ~= 0 then
         windows.at_bottom = true
         return true
@@ -232,10 +225,20 @@ function windows.set_bottom(hwnd)
     end
 end
 
-function windows.set_top(hwnd)
+function windows.set_orderable()
+    windows.at_bottom = false
+    local result = ffi.C.SetWindowPos(windows.hwnd, ffi.cast("HWND", -2), 0, 0, 0, 0, 0x0013) -- SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    if result ~= 0 then
+        return true
+    else
+        return false, ffi.C.GetLastError()
+    end
+end
+
+function windows.set_top()
     windows.at_bottom = false
     -- set to HWND_TOPMOST
-    local result = ffi.C.SetWindowPos(hwnd, ffi.cast("HWND", -1), 0, 0, 0, 0, 0x0013) -- SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    local result = ffi.C.SetWindowPos(windows.hwnd, ffi.cast("HWND", -1), 0, 0, 0, 0, 0x0013) -- SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
     if result ~= 0 then
         return true
     else
@@ -243,9 +246,43 @@ function windows.set_top(hwnd)
     end
 end
 
-function windows.hide_taskbar_and_disable_click(hwnd)
-    local orig_ex = ffi.C.GetWindowLongA(hwnd, -20)
-    local result = ffi.C.SetWindowLongA(hwnd, -20, bit.bor(orig_ex, 0x080800a0)) -- WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE
+-- transparency
+
+-- use DwmEnableBlurBehindWindow which works on modern windows
+function windows.set_transparent()
+    local orig_style = ffi.C.GetWindowLongA(windows.hwnd, -16)
+    orig_style = bit.band(orig_style, bit.bnot(0x00cf0000)) -- WS_OVERLAPPEDWINDOW
+    orig_style = bit.bor(orig_style, 0x80000000) -- WS_POPUP
+    ffi.C.SetWindowLongA(windows.hwnd, -16, orig_style)
+    local bb = ffi.new('DWM_BLURBEHIND[1]')
+    local hRgn = ffi.C.CreateRectRgn(0, 0, -1, -1) -- create an invisible region
+    bb[0].dwFlags = 3 -- DWM_BB_ENABLE | DWM_BB_BLURREGION
+    bb[0].hRgnBlur = hRgn
+    bb[0].fEnable = true
+    local result = dwmapi.DwmEnableBlurBehindWindow(windows.hwnd, bb);
+    if result == 0 then return true else return false, result end
+end
+
+function windows.set_opaque()
+    local bb = ffi.new('DWM_BLURBEHIND[1]')
+    local hRgn = ffi.C.CreateRectRgn(0, 0, -1, -1) -- create an invisible region
+    bb[0].dwFlags = 1 -- DWM_BB_ENABLE
+    bb[0].hRgnBlur = hRgn
+    bb[0].fEnable = false
+    local result = dwmapi.DwmEnableBlurBehindWindow(windows.hwnd, bb);
+    if result == 0 then return true else return false, result end
+end
+
+-- click through and hide taskbar
+
+function windows.set_click_through(enabled)
+    local orig_ex = ffi.C.GetWindowLongA(windows.hwnd, -20)
+    if enabled then
+        orig_ex = bit.bor(orig_ex, 0x00080020)
+    else
+        orig_ex = bit.band(orig_ex, bit.bnot(0x00080020))
+    end -- WS_EX_LAYERED | WS_EX_TRANSPARENT
+    local result = ffi.C.SetWindowLongA(windows.hwnd, -20, orig_ex)
     if result ~= 0 then
         return true
     else
@@ -253,18 +290,35 @@ function windows.hide_taskbar_and_disable_click(hwnd)
     end
 end
 
-windows.display_pos_x = 0
-windows.display_pos_y = 0
-windows.display_width = 0
-windows.display_height = 0
+function windows.set_hide_taskbar(enabled)
+    local orig_ex = ffi.C.GetWindowLongA(windows.hwnd, -20)
+    if enabled then
+        orig_ex = bit.bor(orig_ex, 0x08000080)
+    else
+        orig_ex = bit.band(orig_ex, bit.bnot(0x08000080))
+    end -- WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
+    local result = ffi.C.SetWindowLongA(windows.hwnd, -20, orig_ex)
+    if result ~= 0 then
+        return true
+    else
+        return false, ffi.C.GetLastError()
+    end
+end
 
-function windows.init_display_pos(hwnd, display_index)
+
+windows.mouse_window_pos_x = 0
+windows.mouse_window_pos_y = 0
+windows.mouse_window_width = 0
+windows.mouse_window_height = 0
+
+function windows.update_mouse_window_pos()
     local rect = ffi.new("RECT[1]")
-    local status = ffi.C.GetWindowRect(hwnd, rect)
-    if status == 0 then print("init display pos get window rect error") end
-    windows.display_pos_x = tonumber(rect[0].left)
-    windows.display_pos_y = tonumber(rect[0].top)
-    windows.display_width, windows.display_height = love.window.getDesktopDimensions(display_index)
+    local status = ffi.C.GetWindowRect(windows.hwnd, rect)
+    if status == 0 then log.error("init display pos get window rect error") end
+    windows.mouse_window_pos_x = tonumber(rect[0].left)
+    windows.mouse_window_pos_y = tonumber(rect[0].top)
+    windows.mouse_window_width = tonumber(rect[0].right - rect[0].left)
+    windows.mouse_window_height = tonumber(rect[0].bottom - rect[0].top)
 end
 
 -- because window is transparent, mouse events can't be captured by love
@@ -273,13 +327,13 @@ end
 function windows.get_mouse_pos()
     local point = ffi.new("POINT[1]")
     local status = ffi.C.GetCursorPos(point)
-    if status == 0 then print("get cursor pos error") end
-    local x = point[0].x - windows.display_pos_x
-    local y = point[0].y - windows.display_pos_y
+    if status == 0 then log.error("get cursor pos error") end
+    local x = point[0].x - windows.mouse_window_pos_x
+    local y = point[0].y - windows.mouse_window_pos_y
     if x < 0 then x = 0 end
-    if x >= windows.display_width then x = windows.display_width end
+    if x >= windows.mouse_window_width then x = windows.mouse_window_width end
     if y < 0 then y = 0 end
-    if y >= windows.display_height then y = windows.display_height end
+    if y >= windows.mouse_window_height then y = windows.mouse_window_height end
     return x, y
 end
 
@@ -323,7 +377,17 @@ function windows.try_mouse_event(pressed, released, moved)
     end
 end
 
+windows.should_try_mouse_event = false
+windows.original_mouse_functions = {}
 function windows.override_mouse_functions()
+    if windows.should_try_mouse_event == false then -- has not saved original
+        windows.should_try_mouse_event = true
+        windows.original_mouse_functions.getPosition = love.mouse.getPosition
+        windows.original_mouse_functions.isDown = love.mouse.isDown
+        windows.original_mouse_functions.hasFocus = love.window.hasFocus
+        windows.original_mouse_functions.hasMouseFocus = love.window.hasMouseFocus
+    end
+
     love.mouse.getPosition = windows.get_mouse_pos
     love.mouse.isDown = function (...)
         local buttons = {...}
@@ -341,39 +405,92 @@ function windows.override_mouse_functions()
     love.window.hasMouseFocus = function () return true end
 end
 
-function windows.get_hwnd()
-    return ffi.C.GetActiveWindow()
+function windows.recover_mouse_functions()
+    windows.should_try_mouse_event = false
+    love.mouse.getPosition = windows.original_mouse_functions.getPosition
+    love.mouse.isDown = windows.original_mouse_functions.isDown
+    love.window.hasFocus = windows.original_mouse_functions.hasFocus
+    love.window.hasMouseFocus = windows.original_mouse_functions.hasMouseFocus
 end
 
-function windows.init(display_index)
-
-    windows.hittest = function () return 'client' end
-    local display_width, display_height = love.window.getDesktopDimensions(display_index)
+function windows.set_window_position(display_index, x, y, w, h)
+    if x == nil then x = 0 end
+    if y == nil then y = 0 end
+    local display_w, display_h = love.window.getDesktopDimensions(display_index)
+    if w == nil then w = display_w - 1 end -- -1 is to ensure transparency
+    if h == nil then h = display_h end
+    log.debug("set display index", display_index)
     love.window.setMode(
-        display_width - 1, display_height, -- window will be opaque if not -1
+        w, h,
         { borderless = true, resizable = false, vsync = 0, msaa = 4,
-          display = display_index, x = 0, y = 0,
+          display = display_index, x = x, y = y,
           highdpi = true, usedpiscale = false }
     )
-    local hwnd = windows.get_hwnd()
-    windows.hwnd = hwnd
-    local status, err = windows.set_transparent(hwnd)
-    print("hWnd:", hwnd)
-    windows.set_bottom(hwnd)
+    -- probably window creation
+    windows.hwnd = windows.get_hwnd()
+    local status, err = windows.register_subclass_window_proc()
     if not status then
-        print("error setting transparent", err)
+        log.error("error registering subclass proc", err)
     end
-    local status, err = windows.register_subclass_window_proc(hwnd)
-    if not status then
-        print("error registering subclass proc", err)
-    end
-    local status, err = windows.hide_taskbar_and_disable_click(hwnd)
-    if not status then
-        print("error hiding taskbar", err)
-    end
+    windows.update_mouse_window_pos()
+end
 
-    windows.override_mouse_functions()
-    windows.init_display_pos(hwnd, display_index)
+windows.user_config = {}
+
+function windows.update_user_config(key, value)
+    if windows.user_config[key] == value then return false end
+    log.debug("update usr config", key, value)
+    if key == "z_order" then
+        if value == "bottom" then windows.set_bottom() end
+        if value == "top" then windows.set_top() end
+        if value == "orderable" then windows.set_orderable() end
+    end
+    if key == "transparency" then
+        if value then
+            windows.set_transparent()
+        else
+            windows.set_opaque()
+        end
+    end
+    if key == "click_through" then
+        windows.set_click_through(value)
+        if value and not windows.should_try_mouse_event then
+            windows.override_mouse_functions()
+        end
+        if not value and windows.should_try_mouse_event then
+            windows.recover_mouse_functions()
+        end
+    end
+    if key == "hide_taskbar" then windows.set_hide_taskbar(value) end
+    if key == "window_position" then
+        windows.set_window_position(value.display_index, value.x, value.y, value.w, value.h)
+        local original_user_config = windows.user_config
+        windows.user_config = {}
+        for k, v in pairs(original_user_config) do
+            if k ~= "window_position" then
+                windows.update_user_config(k, v)
+            end
+        end
+    end
+    windows.user_config[key] = value
+    return true
+end
+
+function windows.user_config_gui()
+    
+end
+
+windows.hittest = function () return 'client' end
+
+function windows.init(user_config)
+    -- create a small window first to prevent flashing
+    windows.update_user_config("window_position", {display_index = 1, x = 0, y = 0, w = 1, h = 1})
+    windows.update_user_config("window_position", {display_index = 2})
+    
+    windows.update_user_config("z_order", "bottom")
+    windows.update_user_config("transparency", true)
+    windows.update_user_config("click_through", true)
+    windows.update_user_config("hide_taskbar", true)
 
     love.graphics.setBackgroundColor(0, 0, 0, 0)
 end
