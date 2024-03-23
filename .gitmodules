@@ -1,0 +1,3 @@
+[submodule "lua/Slab"]
+	path = lua/Slab
+	url = https://github.com/flamendless/Slab.git

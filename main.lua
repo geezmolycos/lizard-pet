@@ -5,22 +5,14 @@ end
 
 love.filesystem.setRequirePath(love.filesystem.getRequirePath() .. ';lua/?.lua;lua/?/init.lua')
 
-local lib_path = love.filesystem.getSource() .. "/lib"
-if love.filesystem.isFused() then
-    lib_path = love.filesystem.getSourceBaseDirectory() .. "/lib"
-end
-local extension = jit.os == "Windows" and "dll" or jit.os == "Linux" and "so" or jit.os == "OSX" and "dylib"
-
-package.cpath = string.format("%s;%s/?.%s", package.cpath, lib_path, extension)
-
 local log = require "log"
+log.remove_file()
 
-log.fatal(1, 1, {1,2,3}, "test")
+log.warn("Lizard pet: Hello from main.lua")
 
-local ffi = require "ffi"
 local inspect = require "inspect"
-local imgui = require "cimgui"
 local mgl = require "MGL"
+local Slab = require "Slab"
 local skeleton = require "skeleton"
 local draw_modifier = require "draw_modifier"
 local perlin = require "perlin"
@@ -48,69 +40,36 @@ legs[2]:build(body.joints[6], body.joints[5], mgl.vec2(20, -20), mgl.vec2(8, -16
 legs[3]:build(body.joints[11], body.joints[10], mgl.vec2(30, -30), mgl.vec2(12, -17), mgl.vec2(12, -17), 70, 1.5)
 legs[4]:build(body.joints[11], body.joints[10], mgl.vec2(30, 30), mgl.vec2(12, 17), mgl.vec2(12, 17), -70, 1.5)
 
-love.load = function()
+love.load = function(args)
     port.init(1)
-    imgui.love.Init() -- or imgui.love.Init("RGBA32") or imgui.love.Init("Alpha8")
+    Slab.Initialize(args)
 end
-local debug_window_show = ffi.new("bool[1]")
-local wing = ffi.new("float[1]")
-local shadow_height = ffi.new("float[1]")
-local air = ffi.new("int[1]")
-local show_target = ffi.new("bool[1]", {false})
+local debug_window_show = false
+local wing_spread = 0
+local shadow_height = 0
+local leg_in_air = 0
+local show_target = false
 local state = 'landed'
 local speed = 1
 local fly_freq = 1.8
 -- landed, takeoff, flying, landing
 
-wing[0] = 0.2
-left_wing:spread(wing[0])
-right_wing:spread(wing[0])
-air[0] = 0
+wind_spread = 0.2
+left_wing:spread(wind_spread)
+right_wing:spread(wind_spread)
+leg_in_air = 0
 local leg_step = 0
 local leg_step_count = 0
 local clock = 0
 local target
 love.draw = function()
-    imgui.SetNextWindowPos(imgui.ImVec2_Float(love.graphics.getWidth() - 150, 100))
-    if imgui.Begin("Debug checkbox", nil, imgui.love.WindowFlags("NoTitleBar", "NoResize", "NoMove", "NoScrollbar", "NoSavedSettings")) then
-        if imgui.Button("Close") then
-            love.quit()
-        end
-        imgui.Checkbox("Show debug", debug_window_show)
-    end
-    imgui.End()
-    if debug_window_show[0] then
-        if imgui.Begin("Debug", nil, 0) then
-            local status
-            status = imgui.SliderFloat("wing", wing, 0.0, 1.0)
-            status = imgui.SliderFloat("shadow", shadow_height, 0.0, 1.0)
-            if status then
-                left_wing:spread(wing[0])
-                right_wing:spread(wing[0])
-            end
-            status = imgui.SliderInt("air", air, 0, 2)
-            if status then
-                for _, leg in ipairs(legs) do
-                    leg:air(air[0])
-                end
-            end
-            imgui.Text("leg: %d", ffi.cast('int', leg_step))
-            imgui.Text("state: " .. state)
-            imgui.Text("speed: " .. speed)
-            imgui.Checkbox("Show target", show_target);
-        end
-        imgui.End()
-    end
-    -- code to render imgui
-    imgui.Render()
-    imgui.love.RenderDrawLists()
 
     -- draw dragon
     love.graphics.push('all')
     -- draw shadow
     local body_center = body.joints[9].pos
     local max_radius = 80
-    local current_radius = max_radius * (1.2 - shadow_height[0])
+    local current_radius = max_radius * (1.2 - shadow_height)
     love.graphics.setColor(0, 0, 0, 0.1)
     love.graphics.circle('fill', body_center.x, body_center.y, current_radius * 0.6)
     love.graphics.circle('fill', body_center.x, body_center.y, current_radius * 0.8)
@@ -122,7 +81,7 @@ love.draw = function()
     right_wing:draw()
     body:draw()
     love.graphics.pop('all')
-    if show_target[0] then
+    if show_target then
         love.graphics.circle("line", target.x, target.y, 10)
     end
     love.timer.sleep(1/100)
@@ -135,8 +94,7 @@ local landing_distance = 200
 love.update = function(dt)
     port.try_mouse_event(love.mousepressed, love.mousereleased, love.mousemoved)
     clock = clock + dt
-    imgui.love.Update(dt)
-    imgui.NewFrame()
+    Slab.Update(dt)
 
     if target == nil then
         target = body.target_joint.pos
@@ -160,14 +118,14 @@ love.update = function(dt)
     if state == 'landed' then
         local target_wing_spread = perlin:noise(clock, 4564.453, 4635.312) / 2 + 0.5
         target_wing_spread = target_wing_spread * 0.2 + 0.1
-        local diff = target_wing_spread - wing[0]
+        local diff = target_wing_spread - wind_spread
         if math.abs(diff) > dt / 1 then
             diff = diff / math.abs(diff) * dt/1
         end
-        wing[0] = wing[0] + diff
-        shadow_height[0] = wing[0]
-        left_wing:spread(wing[0])
-        right_wing:spread(wing[0])
+        wind_spread = wind_spread + diff
+        shadow_height = wind_spread
+        left_wing:spread(wind_spread)
+        right_wing:spread(wind_spread)
         left_wing:flap(0.5)
         right_wing:flap(0.5)
         speed = 0.1 + (perlin:noise(clock, 5610.153, 2455.987) / 2 + 0.5) * 0.2
@@ -175,7 +133,7 @@ love.update = function(dt)
     if state == 'landed' and mgl.length(mouse_pos - body.joints[1].pos) > takeoff_distance then
         state = 'takeoff'
         takeoff_delay = 1
-        air[0] = 1
+        leg_in_air = 1
         for i, leg in ipairs(legs) do
             leg:air(1)
         end
@@ -183,40 +141,40 @@ love.update = function(dt)
     if state == 'takeoff' then
         local target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target = target * 0.3 + 0.4
-        local diff = target - wing[0]
+        local diff = target - wind_spread
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        wing[0] = wing[0] + diff
-        shadow_height[0] = wing[0]
-        if math.abs(target - wing[0]) < 0.02 then
+        wind_spread = wind_spread + diff
+        shadow_height = wind_spread
+        if math.abs(target - wind_spread) < 0.02 then
             takeoff_delay = takeoff_delay - dt
             if takeoff_delay <= 0 then
                 state = 'flying'
-                air[0] = 2
+                leg_in_air = 2
                 for i, leg in ipairs(legs) do
                     leg:air(2)
                 end
             end
         end
-        left_wing:spread(wing[0])
-        right_wing:spread(wing[0])
-        left_wing:flap(wing[0])
-        right_wing:flap(wing[0])
+        left_wing:spread(wind_spread)
+        right_wing:spread(wind_spread)
+        left_wing:flap(wind_spread)
+        right_wing:flap(wind_spread)
     end
     if state == 'flying' then
         local wing_speed_target = math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         wing_speed_target = wing_speed_target * 0.3 + 0.4
-        local diff = wing_speed_target - wing[0]
+        local diff = wing_speed_target - wind_spread
         if math.abs(diff) > dt / 0.5 then
             diff = diff / math.abs(diff) * dt/0.5
         end
-        wing[0] = wing[0] + diff
-        shadow_height[0] = wing[0]
-        left_wing:spread(wing[0])
-        right_wing:spread(wing[0])
-        left_wing:flap(wing[0])
-        right_wing:flap(wing[0])
+        wind_spread = wind_spread + diff
+        shadow_height = wind_spread
+        left_wing:spread(wind_spread)
+        right_wing:spread(wind_spread)
+        left_wing:flap(wind_spread)
+        right_wing:flap(wind_spread)
         local target_speed = -math.sin(clock * fly_freq * math.pi) / 2 + 0.5
         target_speed = target_speed * 0.3 + 0.4
         local speed_diff = target_speed - speed
@@ -227,7 +185,7 @@ love.update = function(dt)
     end
     if state == 'flying' and mgl.length(target - body.joints[1].pos) < landing_distance then
         state = 'landing'
-        air[0] = 0
+        leg_in_air = 0
         for i, leg in ipairs(legs) do
             leg:air(0)
         end
@@ -280,54 +238,10 @@ love.update = function(dt)
 end
 
 love.mousemoved = function(x, y, ...)
-    imgui.love.MouseMoved(x, y)
-    if not imgui.love.GetWantCaptureMouse() then
-        -- your code here
-    end
 end
 
 love.mousepressed = function(x, y, button, ...)
-    imgui.love.MousePressed(button)
-    if not imgui.love.GetWantCaptureMouse() then
-        -- your code here
-    end
 end
 
 love.mousereleased = function(x, y, button, ...)
-    imgui.love.MouseReleased(button)
-    if not imgui.love.GetWantCaptureMouse() then
-        -- your code here 
-    end
-end
-
-love.wheelmoved = function(x, y)
-    imgui.love.WheelMoved(x, y)
-    if not imgui.love.GetWantCaptureMouse() then
-        -- your code here 
-    end
-end
-
-love.keypressed = function(key, ...)
-    imgui.love.KeyPressed(key)
-    if not imgui.love.GetWantCaptureKeyboard() then
-        -- your code here 
-    end
-end
-
-love.keyreleased = function(key, ...)
-    imgui.love.KeyReleased(key)
-    if not imgui.love.GetWantCaptureKeyboard() then
-        -- your code here 
-    end
-end
-
-love.textinput = function(t)
-    imgui.love.TextInput(t)
-    if imgui.love.GetWantCaptureKeyboard() then
-        -- your code here 
-    end
-end
-
-love.quit = function()
-    return imgui.love.Shutdown()
 end

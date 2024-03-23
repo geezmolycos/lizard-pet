@@ -2,8 +2,8 @@ local log = {}
 
 local inspect = require "inspect"
 
-log.level_to_name = {'fatal', 'error', 'warning', 'info', 'debug', 'trace'}
-log.name_to_level = {fatal = 1, error = 2, warning = 3, info = 4, debug = 5, trace = 6}
+log.level_to_name = {'fatal', 'error', 'warn', 'info', 'debug', 'trace'}
+log.name_to_level = {fatal = 1, error = 2, warn = 3, info = 4, debug = 5, trace = 6}
 
 log.console_colors = {
     "\027[35m",
@@ -23,6 +23,10 @@ function log.write_file(line)
     love.filesystem.append(log.output_file_name, line .. "\n")
 end
 
+function log.remove_file()
+    love.filesystem.remove(log.output_file_name)
+end
+
 log.output_console_use_color = true
 log.history = {}
 log.render_line_amount = 5
@@ -33,8 +37,8 @@ function log.write_history(line)
     table.insert(log.history, 1, line)
 end
 
-log.output_to_console_level = 6
-log.output_to_file_level = 0
+log.output_to_console_level = 5
+log.output_to_file_level = 4
 log.output_to_history_level = 0
 
 function log.log_text(depth, level, text)
@@ -86,9 +90,11 @@ function log.log(depth, level, ...)
     return log.log_text(depth, level, s)
 end
 
-function log.fatal(...)
-    return log.log(1, 1, ...)
-end
-
+function log.fatal(...) return log.log(1, 1, ...) end
+function log.error(...) return log.log(1, 2, ...) end
+function log.warn (...) return log.log(1, 3, ...) end
+function log.info (...) return log.log(1, 4, ...) end
+function log.debug(...) return log.log(1, 5, ...) end
+function log.trace(...) return log.log(1, 6, ...) end
 
 return log
