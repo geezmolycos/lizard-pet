@@ -443,7 +443,7 @@ function windows.update_user_config(key, value)
     if key == "z_order" then
         if value == "bottom" then windows.set_bottom() end
         if value == "top" then windows.set_top() end
-        if value == "orderable" then windows.set_orderable() end
+        if value == "free" then windows.set_orderable() end
     end
     if key == "transparency" then
         if value then
@@ -476,7 +476,17 @@ function windows.update_user_config(key, value)
     return true
 end
 
-function windows.user_config_gui()
+function windows.user_config_gui(Slab)
+    Slab.Separator()
+    Slab.Text("Top/Bottom:")
+    for I, V in ipairs({"top", "bottom", "free"}) do
+        if Slab.RadioButton(V, {
+            Index = I,
+            SelectedIndex = ({top = 1, bottom = 2, free = 3})[windows.user_config.z_order]
+        }) then
+            windows.update_user_config("z_order", V)
+        end
+    end
     
 end
 

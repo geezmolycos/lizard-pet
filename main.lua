@@ -62,6 +62,7 @@ function love.draw()
 end
 
 local menu_visible = false
+local menu_grace = false -- make the first click not close the menu
 local menu_x = 0
 local menu_y = 0
 local menu_is_hovered = false
@@ -76,6 +77,10 @@ love.update = function(dt)
     if menu_visible then
         Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y})
         Slab.Text("Hello World")
+        port.user_config_gui(Slab)
+        if Slab.Button("Quit") then
+            love.event.quit()
+        end
         Slab.EndWindow()
         menu_is_hovered = not Slab.IsVoidHovered()
     end
@@ -111,10 +116,12 @@ end
 love.mousepressed = function(x, y, button, ...)
     -- menu show and hide
     if button == 1 and not menu_is_hovered then
-        menu_visible = false
+        if menu_grace then menu_grace = false
+        elseif menu_visible then menu_visible = false end
     end
     if button == 2 then
         menu_visible = true
+        menu_grace = true
         menu_x = x
         menu_y = y
     end
