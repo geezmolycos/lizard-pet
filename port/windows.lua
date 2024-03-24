@@ -504,6 +504,7 @@ end
 function windows.user_config_gui(Slab)
     Slab.Separator()
     Slab.Text("Top/Bottom:")
+    Slab.SameLine()
     for I, V in ipairs({"top", "bottom", "free"}) do
         if Slab.RadioButton(V, {
             Index = I,
@@ -565,7 +566,7 @@ end
 function windows.init(user_config)
     -- create a small window first to prevent flashing
     windows.update_user_config("window_position", {display_index = 1, x = 0, y = 0, w = 1, h = 1})
-    windows.update_user_config("window_position", with_default(user_config.window_position, {display_index = 2}))
+    windows.update_user_config("window_position", with_default(user_config.window_position, {display_index = 1}))
 
     windows.update_user_config("z_order", with_default(user_config.z_order, "bottom"))
     windows.update_user_config("transparency", with_default(user_config.transparency, true))

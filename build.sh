@@ -2,15 +2,18 @@
 
 echo "Packaging game"
 
+# change conf console=false
+sed 's/t.console = true/t.console = false/g' conf.lua > build/conf.lua
 zip -9 -r build/LizardPet.love . -x ".git**" -x ".vscode**" -x "build**" -x "images**" -x "lib**" -x "reference.svg**" -x "conf.lua" -x .gitignore -x build.sh 
+pushd build
+zip -9 -u LizardPet.love conf.lua
+rm -f conf.lua
+popd
 
 echo "Copying files"
 
 cp README.md build/README.md
 cp LICENSE.txt build/LICENSE-LizardPet.txt
-sed 's/t.console = true/t.console = false/g' conf.lua > build/conf.lua
-
-cp -r lib build/lib
 
 echo "Making love executable"
 
@@ -66,5 +69,5 @@ cp "${LOVE_DIR}/license.txt" "build/license.txt"
 echo "Packaging for version ${VERSION}"
 
 pushd build
-zip -9 -r "LizardPet-${VERSION}-win64.zip" .
+zip -9 -r "LizardPet-${VERSION}-win64.zip" . -x "LizardPet.love"
 popd

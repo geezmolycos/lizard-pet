@@ -38,7 +38,7 @@ function log.write_history(line)
 end
 
 log.output_to_console_level = 5
-log.output_to_file_level = 4
+log.output_to_file_level = 5
 log.output_to_history_level = 5
 
 function log.log_text(depth, level, text)
