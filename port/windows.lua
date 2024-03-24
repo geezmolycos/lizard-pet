@@ -330,11 +330,12 @@ function windows.get_mouse_pos()
     if status == 0 then log.error("get cursor pos error") end
     local x = point[0].x - windows.mouse_window_pos_x
     local y = point[0].y - windows.mouse_window_pos_y
-    if x < 0 then x = 0 end
-    if x >= windows.mouse_window_width then x = windows.mouse_window_width end
-    if y < 0 then y = 0 end
-    if y >= windows.mouse_window_height then y = windows.mouse_window_height end
-    return x, y
+    local in_bound = true
+    if x < 0 then x = 0; in_bound = false end
+    if x >= windows.mouse_window_width then x = windows.mouse_window_width; in_bound = false end
+    if y < 0 then y = 0; in_bound = false end
+    if y >= windows.mouse_window_height then y = windows.mouse_window_height; in_bound = false end
+    return x, y, in_bound
 end
 
 windows.mouse_last_x = 0
@@ -343,7 +344,7 @@ windows.mouse_left_button_last_down = false
 windows.mouse_right_button_last_down = false
 
 function windows.try_mouse_event(pressed, released, moved)
-    local x, y = windows.get_mouse_pos()
+    local x, y, in_bound = windows.get_mouse_pos()
     local dx = x - windows.mouse_last_x
     local dy = y - windows.mouse_last_y
     if x ~= windows.mouse_last_x or y ~= windows.mouse_last_y then
@@ -351,6 +352,7 @@ function windows.try_mouse_event(pressed, released, moved)
     end
     windows.mouse_last_x = x
     windows.mouse_last_y = y
+    if not in_bound then return end -- do not process clicks when out of bound
     if bit.band(ffi.C.GetAsyncKeyState(0x01), 0x8000) ~= 0 then
         -- VK_LBUTTON
         if not windows.mouse_left_button_last_down then
@@ -377,11 +379,11 @@ function windows.try_mouse_event(pressed, released, moved)
     end
 end
 
-windows.should_try_mouse_event = false
+windows.mouse_overrided = false
 windows.original_mouse_functions = {}
 function windows.override_mouse_functions()
-    if windows.should_try_mouse_event == false then -- has not saved original
-        windows.should_try_mouse_event = true
+    if windows.mouse_overrided == false then -- has not saved original
+        windows.mouse_overrided = true
         windows.original_mouse_functions.getPosition = love.mouse.getPosition
         windows.original_mouse_functions.isDown = love.mouse.isDown
         windows.original_mouse_functions.hasFocus = love.window.hasFocus
@@ -406,7 +408,7 @@ function windows.override_mouse_functions()
 end
 
 function windows.recover_mouse_functions()
-    windows.should_try_mouse_event = false
+    windows.mouse_overrided = false
     love.mouse.getPosition = windows.original_mouse_functions.getPosition
     love.mouse.isDown = windows.original_mouse_functions.isDown
     love.window.hasFocus = windows.original_mouse_functions.hasFocus
@@ -439,7 +441,7 @@ windows.user_config = {}
 
 function windows.update_user_config(key, value)
     if windows.user_config[key] == value then return false end
-    log.debug("update usr config", key, value)
+    log.debug("update user config", key, value)
     if key == "z_order" then
         if value == "bottom" then windows.set_bottom() end
         if value == "top" then windows.set_top() end
@@ -454,10 +456,10 @@ function windows.update_user_config(key, value)
     end
     if key == "click_through" then
         windows.set_click_through(value)
-        if value and not windows.should_try_mouse_event then
+        if value and not windows.mouse_overrided then
             windows.override_mouse_functions()
         end
-        if not value and windows.should_try_mouse_event then
+        if not value and windows.mouse_overrided then
             windows.recover_mouse_functions()
         end
     end
@@ -476,6 +478,29 @@ function windows.update_user_config(key, value)
     return true
 end
 
+windows.gui_displays = {}
+windows.gui_displays_selected = 1
+function windows.init_user_config_gui(Slab)
+    local count = love.window.getDisplayCount()
+    for i = 1, count do
+        windows.gui_displays[i] = string.format("#%d - %s", i, love.window.getDisplayName(i))
+    end
+end
+
+windows.user_config_gui_window_pos = {x = 0, y = 0, w = 800, h = 600}
+
+function windows.should_open_config_gui()
+    if not windows.mouse_overrided then
+        return true
+    end
+    -- only open when alt key and ctrl key is held
+    if bit.band(ffi.C.GetAsyncKeyState(0x12), 0x8000) ~= 0 and bit.band(ffi.C.GetAsyncKeyState(0x11), 0x8000) ~= 0 then
+        -- VK_MENU, VK_CONTROL
+        return true
+    end
+    return false
+end
+
 function windows.user_config_gui(Slab)
     Slab.Separator()
     Slab.Text("Top/Bottom:")
@@ -486,21 +511,68 @@ function windows.user_config_gui(Slab)
         }) then
             windows.update_user_config("z_order", V)
         end
+        Slab.SameLine()
     end
-    
+    Slab.NewLine()
+    if Slab.CheckBox(windows.user_config.transparency, "Transparent") then
+        windows.update_user_config("transparency", not windows.user_config.transparency)
+    end
+    if Slab.CheckBox(windows.user_config.click_through, "Click through") then
+        windows.update_user_config("click_through", not windows.user_config.click_through)
+    end
+    if Slab.CheckBox(windows.user_config.hide_taskbar, "Hide taskbar") then
+        windows.update_user_config("hide_taskbar", not windows.user_config.hide_taskbar)
+    end
+    Slab.Text("Display: ")
+    Slab.SameLine()
+    if Slab.BeginComboBox('Display', {Selected = windows.gui_displays[windows.gui_displays_selected]}) then
+        for I, V in pairs(windows.gui_displays) do
+            if Slab.TextSelectable(V) then
+                windows.gui_displays_selected = I
+                windows.update_user_config("window_position", {display_index = I})
+            end
+        end
+
+        Slab.EndComboBox()
+    end
+    Slab.Text("Window position:")
+    for _, v in ipairs({'x', 'y', 'w', 'h'}) do
+        Slab.Text(v .. ":")
+        Slab.SameLine()
+        if Slab.Input('Window position ' .. v, {
+            Text = tostring(windows.user_config_gui_window_pos[v]),
+            ReturnOnText = false, NumbersOnly = true, W = 70
+        }) then
+            windows.user_config_gui_window_pos[v] = Slab.GetInputNumber()
+        end
+        Slab.SameLine()
+    end
+    Slab.NewLine()
+    if Slab.Button("Apply") then
+        windows.user_config_gui_window_pos.display_index = 1
+        windows.update_user_config("window_position", windows.user_config_gui_window_pos)
+    end
+    Slab.Text("To input number, turn off click through and hide taskbar")
+    Slab.Text("Press enter key to confirm input")
 end
 
 windows.hittest = function () return 'client' end
 
+local function with_default(thing, default)
+    if thing == nil then return default else return thing end
+end
+
 function windows.init(user_config)
     -- create a small window first to prevent flashing
     windows.update_user_config("window_position", {display_index = 1, x = 0, y = 0, w = 1, h = 1})
-    windows.update_user_config("window_position", {display_index = 2})
-    
-    windows.update_user_config("z_order", "bottom")
-    windows.update_user_config("transparency", true)
-    windows.update_user_config("click_through", true)
-    windows.update_user_config("hide_taskbar", true)
+    windows.update_user_config("window_position", with_default(user_config.window_position, {display_index = 2}))
+
+    windows.update_user_config("z_order", with_default(user_config.z_order, "bottom"))
+    windows.update_user_config("transparency", with_default(user_config.transparency, true))
+    windows.update_user_config("click_through", with_default(user_config.click_through, true))
+    windows.update_user_config("hide_taskbar", with_default(user_config.hide_taskbar, true))
+
+    windows.gui_displays_selected = windows.user_config.window_position.display_index
 
     love.graphics.setBackgroundColor(0, 0, 0, 0)
 end

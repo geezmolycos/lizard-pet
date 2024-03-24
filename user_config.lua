@@ -12,8 +12,8 @@ function user_config.get(key)
     return user_config.config[key]
 end
 
-function user_config.set(key)
-    user_config.config[key] = key
+function user_config.set(key, value)
+    user_config.config[key] = value
 end
 
 function user_config.set_default(key, default_value)

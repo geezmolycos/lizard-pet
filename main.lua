@@ -11,8 +11,6 @@ log.remove_file()
 log.warn("Lizard pet: Hello from main.lua")
 
 local user_config = require "user_config"
-user_config.load_from_file()
-user_config.set_default("test", 1)
 
 local mgl = require "MGL"
 local Slab = require "Slab"
@@ -27,8 +25,10 @@ local dragon_obj = dragon.Dragon:new()
 local port = require "port"
 
 love.load = function(args)
-    port.init(2)
-    port.set_top(port.hwnd)
+    user_config.load_from_file()
+    user_config.set_default("test", 1)
+
+    port.init(user_config.get("port") or {})
     Slab.Initialize(args)
     dragon_obj:build()
 end
@@ -62,34 +62,37 @@ function love.draw()
 end
 
 local menu_visible = false
+local menu_open = false
 local menu_grace = false -- make the first click not close the menu
 local menu_x = 0
 local menu_y = 0
 local menu_is_hovered = false
 
 love.update = function(dt)
-    if port.should_try_mouse_event then
+    if port.mouse_overrided then
         port.try_mouse_event(love.handlers['mousepressed'], love.handlers['mousereleased'], love.handlers['mousemoved'])
     end
     clock = clock + dt
     Slab.Update(dt)
 
     if menu_visible then
-        Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y})
-        Slab.Text("Hello World")
-        port.user_config_gui(Slab)
-        if Slab.Button("Quit") then
-            love.event.quit()
+        if Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y, ResetPosition = menu_open}) then
+            port.user_config_gui(Slab)
+            if Slab.Button("Quit") then
+                love.event.quit()
+            end
         end
         Slab.EndWindow()
         menu_is_hovered = not Slab.IsVoidHovered()
+        menu_open = false
     end
 
     if target == nil then
         target = dragon_obj.body.target_joint.pos
     end
 
-    local mouse_pos = mgl.vec2(port.get_mouse_pos())
+    local x, y, in_bound = port.get_mouse_pos()
+    local mouse_pos = mgl.vec2(x, y)
 
     target = dragon_obj.body.head.pos
     -- random offset mouse_pos
@@ -119,11 +122,13 @@ love.mousepressed = function(x, y, button, ...)
         if menu_grace then menu_grace = false
         elseif menu_visible then menu_visible = false end
     end
-    if button == 2 then
+    if button == 2 and port.should_open_config_gui() then
         menu_visible = true
+        menu_open = true
         menu_grace = true
         menu_x = x
         menu_y = y
+        port.init_user_config_gui(Slab)
     end
 end
 
@@ -133,6 +138,7 @@ end
 love.quit = function()
     log.info("Begin quiting")
     log.info("saving config")
+    user_config.set("port", port.user_config)
     user_config.save_to_file()
     log.warn("Quiting...")
 end
