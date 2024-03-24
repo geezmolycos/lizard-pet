@@ -25,9 +25,11 @@ local dragon_obj = dragon.Dragon:new()
 local port = require "port"
 
 love.load = function(args)
+    log.info("Begin loading")
     user_config.load_from_file()
-    user_config.set_default("test", 1)
-
+    user_config.set_default("log_level", "info")
+    
+    log.info("initialize port")
     port.init(user_config.get("port") or {})
     Slab.Initialize(args)
     dragon_obj:build()
@@ -68,6 +70,29 @@ local menu_x = 0
 local menu_y = 0
 local menu_is_hovered = false
 
+local log_window_visible = false
+
+local function colorHex(rgba)
+--	colorHex(rgba)
+--	where rgba is string as "#336699cc"
+    local rb = tonumber(string.sub(rgba, 2, 3), 16) 
+    local gb = tonumber(string.sub(rgba, 4, 5), 16) 
+    local bb = tonumber(string.sub(rgba, 6, 7), 16)
+    local ab = tonumber(string.sub(rgba, 8, 9), 16) or nil
+--	print (rb, gb, bb, ab) -- prints 	51	102	153	204
+--	print (love.math.colorFromBytes( rb, gb, bb, ab )) -- prints	0.2	0.4	0.6	0.8
+    return {love.math.colorFromBytes( rb, gb, bb, ab )}
+end
+
+local log_colors = {
+    colorHex("#ad7fa8"),
+    colorHex("#ef2929"),
+    colorHex("#fce94f"),
+    colorHex("#8ae234"),
+    colorHex("#34e2e2"),
+    colorHex("#729fcf"),
+}
+
 love.update = function(dt)
     if port.mouse_overrided then
         port.try_mouse_event(love.handlers['mousepressed'], love.handlers['mousereleased'], love.handlers['mousemoved'])
@@ -75,20 +100,36 @@ love.update = function(dt)
     clock = clock + dt
     Slab.Update(dt)
 
-    if menu_visible then
-        if Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y, ResetPosition = menu_open}) then
-            Slab.Separator()
-            Slab.Text("OS config:")
-            port.user_config_gui(Slab)
-            Slab.Separator()
-            if Slab.Button("Quit") then
-                love.event.quit()
-            end
+    if Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y, ResetPosition = menu_open, IsOpen = menu_visible}) then
+        if Slab.Button("Show Logs") then
+            log_window_visible = true
         end
-        Slab.EndWindow()
-        menu_is_hovered = not Slab.IsVoidHovered()
-        menu_open = false
+        Slab.Separator()
+        Slab.Text("OS config:")
+        port.user_config_gui(Slab)
+        Slab.Separator()
+        if Slab.Button("Quit") then
+            love.event.quit()
+        end
+    else
+        menu_visible = false
     end
+    Slab.EndWindow()
+    menu_is_hovered = not Slab.IsVoidHovered()
+    menu_open = false
+
+    if Slab.BeginWindow('Logs', {Title = "Logs", W = 600, H = 300, AutoSizeWindow = false, IsOpen = log_window_visible}) then
+        for i, v in ipairs(log.history) do
+            local level, prelude, lineinfo, text = unpack(v)
+            local color = log_colors[level]
+            Slab.Textf(string.format("[%s] ", prelude), { Color = color })
+            Slab.SameLine()
+            Slab.Textf(string.format("%s: %s", lineinfo, text))
+        end
+    else
+        log_window_visible = false
+    end
+    Slab.EndWindow()
 
     if target == nil then
         target = dragon_obj.body.target_joint.pos

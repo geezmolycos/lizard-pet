@@ -29,7 +29,7 @@ end
 
 log.output_console_use_color = true
 log.history = {}
-log.render_line_amount = 5
+log.render_line_amount = 100
 function log.write_history(line)
     if #log.history == log.render_line_amount then
         table.remove(log.history, #log.history)
@@ -39,7 +39,7 @@ end
 
 log.output_to_console_level = 5
 log.output_to_file_level = 4
-log.output_to_history_level = 0
+log.output_to_history_level = 5
 
 function log.log_text(depth, level, text)
     local time = os.date("%H:%M:%S")
@@ -61,12 +61,8 @@ function log.log_text(depth, level, text)
         log.write_file(string.format("[%s] %s: %s", prelude, lineinfo, text))
     end
     if log.output_to_history_level >= level then
-        log.write_history(string.format("[%s] %s: %s", prelude, lineinfo, text))
+        log.write_history({level, prelude, lineinfo, text})
     end
-end
-
-function log.render()
-
 end
 
 function log.log(depth, level, ...)
