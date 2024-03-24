@@ -77,7 +77,10 @@ love.update = function(dt)
 
     if menu_visible then
         if Slab.BeginWindow('Menu', {Title = "Menu", X = menu_x, Y = menu_y, ResetPosition = menu_open}) then
+            Slab.Separator()
+            Slab.Text("OS config:")
             port.user_config_gui(Slab)
+            Slab.Separator()
             if Slab.Button("Quit") then
                 love.event.quit()
             end
@@ -91,7 +94,7 @@ love.update = function(dt)
         target = dragon_obj.body.target_joint.pos
     end
 
-    local x, y, in_bound = port.get_mouse_pos()
+    local x, y = love.mouse.getPosition()
     local mouse_pos = mgl.vec2(x, y)
 
     target = dragon_obj.body.head.pos

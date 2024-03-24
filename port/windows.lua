@@ -548,8 +548,8 @@ function windows.user_config_gui(Slab)
         Slab.SameLine()
     end
     Slab.NewLine()
-    if Slab.Button("Apply") then
-        windows.user_config_gui_window_pos.display_index = 1
+    if Slab.Button("Change position") then
+        windows.user_config_gui_window_pos.display_index = windows.gui_displays_selected
         windows.update_user_config("window_position", windows.user_config_gui_window_pos)
     end
     Slab.Text("To input number, turn off click through and hide taskbar")
