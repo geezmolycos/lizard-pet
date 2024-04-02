@@ -70,4 +70,5 @@ echo "Packaging for version ${VERSION}"
 
 pushd build
 zip -9 -r "LizardPet-${VERSION}-win64.zip" . -x "LizardPet.love"
+mv "LizardPet.love" "LizardPet-${VERSION}.love"
 popd

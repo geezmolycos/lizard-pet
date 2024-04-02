@@ -30,17 +30,97 @@ end
 
 local dragon_obj
 
+local is_picking_color = false
+local picking_color_for = 'body'
+local color_picker_color = {0, 0, 0, 0}
+
+local color_all_parts = {
+    'body',
+    'front_leg',
+    'hind_leg',
+    'front_paw',
+    'hind_paw',
+    'left_wing_base',
+    'left_wing_membrane',
+    'right_wing_base',
+    'right_wing_membrane',
+}
+
+local function color_gsetter(part, set)
+    if part == 'body' then
+        if set then dragon_obj.body_color = set else return dragon_obj.body_color end
+    elseif part == 'front_leg' then
+        if set then
+            dragon_obj.legs[1].limb_color = set
+            dragon_obj.legs[2].limb_color = set
+        else
+            return dragon_obj.legs[1].limb_color
+        end
+    elseif part == 'hind_leg' then
+        if set then
+            dragon_obj.legs[3].limb_color = set
+            dragon_obj.legs[4].limb_color = set
+        else
+            return dragon_obj.legs[3].limb_color
+        end
+    elseif part == 'front_paw' then
+        if set then
+            dragon_obj.legs[1].paw_color = set
+            dragon_obj.legs[2].paw_color = set
+        else
+            return dragon_obj.legs[1].paw_color
+        end
+    elseif part == 'hind_paw' then
+        if set then
+            dragon_obj.legs[3].paw_color = set
+            dragon_obj.legs[4].paw_color = set
+        else
+            return dragon_obj.legs[3].paw_color
+        end
+    elseif part == 'left_wing_base' then
+        if set then
+            dragon_obj.left_wing.limb_color = set
+        else
+            return dragon_obj.left_wing.limb_color
+        end
+    elseif part == 'right_wing_base' then
+        if set then
+            dragon_obj.right_wing.limb_color = set
+        else
+            return dragon_obj.right_wing.limb_color
+        end
+    elseif part == 'left_wing_membrane' then
+        if set then
+            dragon_obj.left_wing.membrane_color = set
+        else
+            return dragon_obj.left_wing.membrane_color
+        end
+    elseif part == 'right_wing_membrane' then
+        if set then
+            dragon_obj.right_wing.membrane_color = set
+        else
+            return dragon_obj.right_wing.membrane_color
+        end
+    end
+end
+
 love.load = function(args)
     local ok, res = xpcall(function ()
         log.info("Begin loading")
         user_config.load_from_file()
         user_config.set_default("log_level", "info")
+        user_config.set_default("colors", {
+            -- defaults will be saved on first run
+        })
 
         log.info("initialize port")
         port.init(user_config.get("port") or {})
         Slab.Initialize(args)
         dragon_obj = dragon.Dragon:new()
         dragon_obj:build()
+        for i, part in ipairs(color_all_parts) do
+            color_gsetter(part, user_config.get('colors')[part])
+        end
     end, debug.traceback)
     if not ok then
         log.fatal("Error when loading: ", res)
@@ -130,6 +210,43 @@ love.update = function(dt)
             Slab.Text("OS config:")
             port.user_config_gui(Slab)
             Slab.Separator()
+            Slab.Text('Colors:')
+            local function color_button(part)
+                Slab.Rectangle({ W = 18, H = 18, Color = color_gsetter(part) })
+                Slab.SameLine()
+                if Slab.Button(part) then
+                    is_picking_color = true
+                    picking_color_for = part
+                    color_picker_color = color_gsetter(part)
+                end
+            end
+            for _, part in ipairs({
+                'body', '',
+                'front_leg', 'front_paw', '',
+                'hind_leg', 'hind_paw', '',
+                'left_wing_base', 'left_wing_membrane', '',
+                'right_wing_base', 'right_wing_membrane', '',
+            }) do
+                if part == '' then
+                    Slab.NewLine()
+                else
+                    color_button(part)
+                    Slab.SameLine()
+                end
+            end
+            Slab.NewLine()
+            if is_picking_color then
+                local result = Slab.ColorPicker({ Color = color_picker_color })
+                local should_apply = result.Color
+                if result.Button == 1 then
+                    is_picking_color = false
+                end
+                if result.Button == -1 then
+                    is_picking_color = false
+                    should_apply = color_picker_color
+                end
+                color_gsetter(picking_color_for, should_apply)
+            end
             if Slab.Button("Quit") then
                 love.event.quit()
             end
@@ -172,6 +289,9 @@ love.update = function(dt)
         target_move_vec.x = target_move_vec.x + mgl.length(target_move_vec) * 0.7 * perlin:noise(clock, 64.56, 379.615)
         target_move_vec.y = target_move_vec.y + mgl.length(target_move_vec) * 0.7 * perlin:noise(clock, 65.64, 311.156)
         target = target + target_move_vec
+        if is_picking_color then
+            target = target + mgl.vec2(-400, 0) -- offset dragon for easier seeing color
+        end
         dragon_obj:update({
             target = target,
             dt = dt,
@@ -218,6 +338,11 @@ love.quit = function()
     log.info("Begin quiting")
     log.info("saving config")
     user_config.set("port", port.user_config)
+    local colors = {}
+    for i, part in ipairs(color_all_parts) do
+        colors[part] = color_gsetter(part)
+    end
+    user_config.set("colors", colors)
     user_config.save_to_file()
     log.warn("Quiting...")
 end
