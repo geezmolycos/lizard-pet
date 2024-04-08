@@ -131,9 +131,10 @@ end
 local debug_window_show = false
 local shadow_height = 0
 local show_target = false
+local show_skeleton = false
 
 local clock = 0
-local target
+local target, near_target
 function love.draw()
     local ok, res = xpcall(function ()
         -- draw dragon
@@ -150,10 +151,46 @@ function love.draw()
         dragon_obj:draw()
         love.graphics.pop('all')
         if show_target then
+            love.graphics.setColor(1, 1, 1)
             love.graphics.circle("line", target.x, target.y, 10)
+            love.graphics.setColor(1, 1, 0)
+            love.graphics.circle("line", near_target.x, near_target.y, 10)
+        end
+
+        if show_skeleton then
+            love.graphics.setColor(1, 1, 1, 1)
+            for i, j in ipairs(dragon_obj.body.joints) do
+                love.graphics.circle('line', j.pos.x, j.pos.y, 3)
+            end
+            for i = 1, #dragon_obj.body.joints-1 do
+                love.graphics.line(
+                    dragon_obj.body.joints[i].pos.x, dragon_obj.body.joints[i].pos.y,
+                    dragon_obj.body.joints[i+1].pos.x, dragon_obj.body.joints[i+1].pos.y
+                )
+            end
+            for _, wing_name in ipairs({'left_wing', 'right_wing'}) do
+                for i, name in ipairs({'main_root', 'elbow', 'paw', 'finger1', 'finger2', 'finger3', 'finger4', 'hind_root', 'hind'}) do
+                    love.graphics.circle('line', dragon_obj[wing_name].joints[name].pos.x, dragon_obj[wing_name].joints[name].pos.y, 3)
+                end
+            end
+            love.graphics.setColor(0, 0, 0)
+            for _, leg in ipairs(dragon_obj.legs) do
+                for i, name in ipairs({'fixation', 'elbow', 'paw'}) do
+                    love.graphics.circle('line', leg[name].pos.x, leg[name].pos.y, 3)
+                end
+                love.graphics.line(
+                    leg.fixation.pos.x, leg.fixation.pos.y,
+                    leg.elbow.pos.x, leg.elbow.pos.y
+                )
+                love.graphics.line(
+                    leg.elbow.pos.x, leg.elbow.pos.y,
+                    leg.paw.pos.x, leg.paw.pos.y
+                )
+            end
         end
 
         Slab.Draw()
+
 
         love.timer.sleep(1/100)
     end, debug.traceback)
@@ -235,6 +272,13 @@ love.update = function(dt)
                 end
             end
             Slab.NewLine()
+            if Slab.CheckBox(show_skeleton, "Show skeleton") then
+                show_skeleton = not show_skeleton
+            end
+            if Slab.CheckBox(show_target, "Show target") then
+                show_target = not show_target
+            end
+            Slab.Separator()
             if is_picking_color then
                 local result = Slab.ColorPicker({ Color = color_picker_color })
                 local should_apply = result.Color
@@ -292,11 +336,13 @@ love.update = function(dt)
         if is_picking_color then
             target = target + mgl.vec2(-400, 0) -- offset dragon for easier seeing color
         end
-        dragon_obj:update({
+        local arg = {
             target = target,
             dt = dt,
             clock = clock
-        })
+        }
+        dragon_obj:update(arg)
+        near_target = arg.near_target
     end, debug.traceback)
     if not ok then
         log.fatal("Error when updating: ", res)
