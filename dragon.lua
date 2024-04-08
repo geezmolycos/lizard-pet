@@ -409,6 +409,10 @@ function Leg:update(args)
     self.fixation:influence_recursive(nil, args.time/2 * multiplier)
     self.current_target.pos = current_target
     self.current_target:influence_recursive(nil, args.time/2 * multiplier)
+    if self.air_stage == 0 then -- is on ground
+        self.root_joint.pos = self.fixation.pos
+        self.root_joint:influence_recursive(nil, args.time/2 * 0.1)
+    end
 end
 
 function Leg:draw(args)
