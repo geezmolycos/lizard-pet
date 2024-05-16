@@ -1,6 +1,6 @@
 # 蜥蜴桌宠
 
-[更新日志](./CHANGELOG.md)
+[更新日志](./CHANGELOG.md) | [项目文档](https://geezmolycos.github.io/lizard-pet/)
 
 ![飞龙的样子](./images/dragon-main.png)
 
