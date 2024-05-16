@@ -133,6 +133,24 @@ local shadow_height = 0
 local show_target = false
 local show_skeleton = false
 
+function dragon_all_joints(d)
+    all = {}
+    for i, j in ipairs(dragon_obj.body.joints) do
+        table.insert(all, {j, dragon_obj.body})
+    end
+    for _, wing_name in ipairs({'left_wing', 'right_wing'}) do
+        for i, name in ipairs({'main_root', 'elbow', 'paw', 'finger1', 'finger2', 'finger3', 'finger4', 'hind_root', 'hind'}) do
+            table.insert(all, {dragon_obj[wing_name].joints[name], dragon_obj[wing_name]})
+        end
+    end
+    for _, leg in ipairs(dragon_obj.legs) do
+        for i, name in ipairs({'fixation', 'elbow', 'paw'}) do
+            table.insert(all, {leg[name], leg})
+        end
+    end
+    return all
+end
+
 local clock = 0
 local target, near_target
 function love.draw()
@@ -231,6 +249,8 @@ local log_colors = {
     colorHex("#729fcf"),
 }
 
+local dragging = nil
+
 love.update = function(dt)
     local ok, res = xpcall(function ()
         if port.mouse_overrided then
@@ -321,6 +341,36 @@ love.update = function(dt)
         local x, y = love.mouse.getPosition()
         local mouse_pos = mgl.vec2(x, y)
 
+        if dragging then
+            local joint = dragging.joint
+            local owner = dragging.owner
+            local diff = mouse_pos - joint.pos
+            if mgl.length(diff) > dt * 500 then
+                diff = diff / mgl.length(diff) * dt*500
+            end
+            joint.pos = joint.pos + diff
+            joint:influence_recursive(nil, dt)
+            if owner == dragon_obj.left_wing then
+                dragon_obj.left_wing.main_attach.pos = dragon_obj.left_wing.joints.main_root.pos
+                dragon_obj.left_wing.main_attach:influence_recursive(nil, dt)
+            elseif owner == dragon_obj.right_wing then
+                dragon_obj.right_wing.main_attach.pos = dragon_obj.right_wing.joints.main_root.pos
+                dragon_obj.right_wing.main_attach:influence_recursive(nil, dt)
+            elseif owner == dragon_obj.legs[1] then
+                dragon_obj.legs[1].root_joint.pos = dragon_obj.legs[1].fixation.pos
+                dragon_obj.legs[1].root_joint:influence_recursive(nil, dt)
+            elseif owner == dragon_obj.legs[2] then
+                dragon_obj.legs[2].root_joint.pos = dragon_obj.legs[2].fixation.pos
+                dragon_obj.legs[2].root_joint:influence_recursive(nil, dt)
+            elseif owner == dragon_obj.legs[3] then
+                dragon_obj.legs[3].root_joint.pos = dragon_obj.legs[3].fixation.pos
+                dragon_obj.legs[3].root_joint:influence_recursive(nil, dt)
+            elseif owner == dragon_obj.legs[4] then
+                dragon_obj.legs[4].root_joint.pos = dragon_obj.legs[4].fixation.pos
+                dragon_obj.legs[4].root_joint:influence_recursive(nil, dt)
+            end
+        end
+
         target = dragon_obj.body.head.pos
         -- random offset mouse_pos
         mouse_pos.x = mouse_pos.x + 100 * perlin:noise(clock, 123.8975, 456.0231)
@@ -356,6 +406,29 @@ end
 
 love.mousepressed = function(x, y, button, ...)
     local ok, res = xpcall(function ()
+        if button == 1 and not dragging then
+            -- drag dragon
+            local all = dragon_all_joints(dragon_obj)
+            local nearest_distance = 1e6
+            local nearest_joint = nil
+            local nearest_owner = nil
+            local mouse_pos = mgl.vec2(x, y)
+            for i, p in ipairs(all) do
+                local j, owner = unpack(p)
+                if mgl.length(j.pos - mouse_pos) < nearest_distance then
+                    nearest_distance = mgl.length(j.pos - mouse_pos)
+                    nearest_joint = j
+                    nearest_owner = owner
+                end
+            end
+            if nearest_distance < 40 then
+                dragging = {
+                    joint = nearest_joint,
+                    owner = nearest_owner
+                }
+                log.debug('dragging')
+            end
+        end
         -- menu show and hide
         if button == 1 and not menu_is_hovered then
             if menu_grace then menu_grace = false
@@ -378,6 +451,7 @@ love.mousepressed = function(x, y, button, ...)
 end
 
 love.mousereleased = function(x, y, button, ...)
+    dragging = nil
 end
 
 love.quit = function()
