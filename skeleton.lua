@@ -1,15 +1,29 @@
+------
+-- 骨骼模块，包含结点、长度约束和角度约束
+-- 运作物理特性
 
 local skeleton = {}
 
 local mgl = require "MGL"
 
+--- 线性插值
+-- @param a 起始值
+-- @param b 终止值
+-- @param t 时间/位置，取0时返回a，取1时返回b
 function skeleton.lerp(a, b, t)
     return a + t * (b-a)
 end
 
--- https://github.com/lincerely/gecko/tree/master
--- https://sean.cm/a/fabrik-algorithm-2d
-
+--- 生成一个长度约束的表，可以用来把两个结点连接到一起.
+-- 使用 fabrik 算法，详见参考：
+-- <https://github.com/lincerely/gecko/tree/master>
+-- <https://sean.cm/a/fabrik-algorithm-2d>
+-- @param length_min
+-- @param length_max
+-- @param speed 一端结点移动时，另一端结点最大的移动速度。非 `exponential` 的情况下，为像素/秒，而 `exponential` 的情况下，为相对值
+-- @param exponential 是否让移动速度随距离指数型衰减，效果更有弹力
+-- @param drag 0~1 值，一端移动会带动另一端以相同方式移动
+-- @return table, 可以用来给 @{Joint:add_neighbor} 使用
 function skeleton.link(length_min, length_max, speed, exponential, drag)
     return {
         length_min = length_min,
@@ -22,6 +36,18 @@ function skeleton.link(length_min, length_max, speed, exponential, drag)
     }
 end
 
+--- 生成一个角度约束的表，用来限制和某个结点相连的两个其他结点的角度.
+-- 使用 fabrik 算法，详见参考：
+-- <https://github.com/lincerely/gecko/tree/master>
+-- <https://sean.cm/a/fabrik-algorithm-2d>
+-- @param fixed 作为参考的结点，这个约束只会控制以下的 moving 结点
+-- @param moving 受控制的结点
+-- @param angle_min 角度下限（弧度）
+-- @param angle_max 角度上限（弧度）
+-- @param speed 速度（类似 @{link}）
+-- @param exponential 指数衰减（类似 @{link}）
+-- @param drag 拖拽（类似 @{link}）
+-- @return table, 可以用来给 @{Joint:add_constraint} 使用
 function skeleton.constraint(fixed, moving, angle_min, angle_max, speed, exponential, drag)
     return {
         fixed = fixed,
@@ -37,6 +63,8 @@ end
 local Joint = {}
 skeleton.Joint = Joint
 
+--- 创建一个结点
+-- @param pos 初始位置，默认为 (0, 0)
 function Joint:new(pos)
     local inst = setmetatable({}, {__index = self})
     inst.neighbors = {}
@@ -50,6 +78,11 @@ function Joint:new(pos)
     return inst
 end
 
+--- 添加邻居结点.
+-- 这个只是单向的，一般肯定要添加双向的，请用@{Joint:add_mutual_neighbor}
+-- @param joint 邻居结点
+-- @param link 长度约束
+-- @see link
 function Joint:add_neighbor(joint, link)
     if self.neighbors[joint] == nil then
         -- update count
@@ -58,6 +91,8 @@ function Joint:add_neighbor(joint, link)
     self.neighbors[joint] = link
 end
 
+--- 移除邻居结点
+-- @param joint 邻居结点
 function Joint:remove_neighbor(joint)
     if self.neighbors[joint] ~= nil then
         self.neighbor_count = self.neighbor_count - 1
@@ -65,24 +100,42 @@ function Joint:remove_neighbor(joint)
     self.neighbors[joint] = nil
 end
 
+--- 添加相互的邻居结点
+-- @param joint 邻居结点
+-- @param link 长度约束
+-- @see Joint:add_neighbor
 function Joint:add_mutual_neighbor(joint, link)
     self:add_neighbor(joint, link)
     joint:add_neighbor(self, link)
 end
 
+--- 移除相互的邻居结点
+-- @param joint 邻居结点
 function Joint:remove_mutual_neighbor(joint)
     self:remove_neighbor(joint)
     joint:remove_neighbor(self)
 end
 
+--- 添加角度约束
+-- @param constraint
+-- @see constraint
 function Joint:add_constraint(constraint)
     self.constraints[constraint] = true
 end
 
+--- 移除角度约束
+-- @param constraint 需要和添加的时候是同一个表
 function Joint:remove_constraint(constraint)
     self.constraints[constraint] = nil
 end
 
+--- 添加对其他结点的影响.
+-- 影响可以包含 `pos`, `drag_translate`, `drag_rotate` 属性。
+-- 每次更新时，首先会计算邻居的影响，再将各影响平均，最后得到最终位置
+--
+-- 该系列函数较底层，一般不会用到
+-- @param joint 需要和添加的时候是同一个表
+-- @param t 需要和添加的时候是同一个表
 function Joint:add_influence(joint, t)
     if self.influences[joint] == nil then
         -- update count
@@ -91,11 +144,14 @@ function Joint:add_influence(joint, t)
     self.influences[joint] = t
 end
 
+--- 清除影响
 function Joint:clear_influence()
     self.influences = {}
     self.influence_count = 0
 end
 
+--- 获取某邻居对自身的影响
+-- @param joint 邻居
 function Joint:get_influence(joint)
     if self.influences[joint] ~= nil then
         return self.influences[joint]
@@ -108,6 +164,8 @@ function Joint:get_influence(joint)
     end
 end
 
+--- 根据影响更新自己的位置.
+-- 较底层，一般不会用到
 function Joint:update_pos()
     if self.influence_count == 0 then return end
     local centroid = mgl.vec2(0, 0)
@@ -120,6 +178,8 @@ function Joint:update_pos()
     self.pos = centroid
 end
 
+--- 根据影响中的拖拽因素更新自己的位置.
+-- 较底层，一般不会用到
 function Joint:update_drag()
     local translate = mgl.vec2(0, 0)
     local translate_count = 0
@@ -145,12 +205,16 @@ function Joint:update_drag()
     self.drag_rotate = rotate
 end
 
+--- 根据影响更新位置，考虑拖拽，并清除影响
 function Joint:update_self()
     self:update_pos()
     self:update_drag()
     self:clear_influence()
 end
 
+--- 考虑长度约束条件，对邻居结点施加影响
+-- @param without 要忽略的邻居结点
+-- @param time 经过的时间长度
 function Joint:influence_lengths(without, time)                                                                                                                            
     for joint, link in pairs(self.neighbors) do
         -- can use single joint or multiple joints
@@ -192,6 +256,9 @@ function Joint:influence_lengths(without, time)
     end
 end
 
+--- 考虑角度约束条件，对邻居结点施加影响
+-- @param without 要忽略的邻居结点
+-- @param time 经过的时间长度
 function Joint:influence_constraints(without, time)
     local i = 0
     for constraint, _ in pairs(self.constraints) do
@@ -236,11 +303,19 @@ function Joint:influence_constraints(without, time)
     end
 end
 
+--- 考虑长度和角度约束条件，对邻居结点施加影响
+-- @param without 要忽略的邻居结点
+-- @param time 经过的时间长度
 function Joint:influence_all(without, time)
     self:influence_lengths(without, time)
     self:influence_constraints(without, time)
 end
 
+--- 递归对邻居节点施加影响.
+-- 该函数是主要使用的函数。
+-- 例如让头运动带动身体，可以先改变头结点的坐标，然后让头结点递归施加影响，就带动了连接的身体结点。
+-- @param without 要忽略的邻居结点
+-- @param time 经过的时间长度
 function Joint:influence_recursive(without, time)
     self:influence_all(without, time)
     for joint, link in pairs(self.neighbors) do
